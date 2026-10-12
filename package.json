@@ -18,7 +18,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "node node_modules/prisma/build/index.js migrate deploy",
-    "db:dev": "node scripts/dev-db.mjs"
+    "db:dev": "node scripts/dev-db.mjs",
+    "db:init": "node prisma/init.mjs"
   },
   "prisma": {
     "seed": "node prisma/seed.mjs"

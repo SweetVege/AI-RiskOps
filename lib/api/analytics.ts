@@ -25,7 +25,21 @@ export type AnalyticsDrilldownRequest = {
 };
 
 type AnalyticsRiskEvent = Awaited<ReturnType<typeof loadAnalyticsDataset>>["riskEvents"][number];
-type AnalyticsCallLog = Awaited<ReturnType<typeof loadAnalyticsDataset>>["callLogs"][number];
+type CallLogSegment = {
+  key: string;
+  label: string;
+  callLogs: number;
+  blockedCalls: number;
+};
+
+type CallLogDimension = "application" | "environment" | "user" | "model";
+
+// Call logs are the high-volume table, so analytics only ever sees them as grouped counts.
+export type CallLogStats = {
+  total: number;
+  blocked: number;
+  segments: Record<CallLogDimension, CallLogSegment[]>;
+};
 
 type DriverBucket = {
   id: string;
@@ -68,88 +82,140 @@ export function analyticsDrilldownFromSearchParams(searchParams: URLSearchParams
   };
 }
 
-export async function loadAnalyticsDataset(scope: RequestScope, filters: AnalyticsFilters) {
-  const [riskEvents, callLogs] = await Promise.all([
-    prisma.riskEvent.findMany({
-      where: {
-        ...scopedRiskEventWhere(scope, filters.applicationId),
-        ...(filters.level ? { level: filters.level } : {}),
-        ...(filters.environment ? { environment: filters.environment } : {}),
-        ...(filters.action ? { action: filters.action } : {}),
-      },
-      orderBy: { occurredAt: "desc" },
-      include: {
-        application: true,
-        ruleMatches: {
-          include: {
-            riskRule: true,
-          },
+function analyticsWhere(filters: AnalyticsFilters) {
+  return {
+    ...(filters.level ? { level: filters.level } : {}),
+    ...(filters.environment ? { environment: filters.environment } : {}),
+    ...(filters.action ? { action: filters.action } : {}),
+  };
+}
+
+async function loadRiskEvents(scope: RequestScope, filters: AnalyticsFilters) {
+  return prisma.riskEvent.findMany({
+    where: {
+      ...scopedRiskEventWhere(scope, filters.applicationId),
+      ...analyticsWhere(filters),
+    },
+    orderBy: { occurredAt: "desc" },
+    select: {
+      id: true,
+      applicationId: true,
+      occurredAt: true,
+      title: true,
+      userRef: true,
+      department: true,
+      model: true,
+      environment: true,
+      score: true,
+      level: true,
+      action: true,
+      application: { select: { id: true, name: true, slug: true, ownerTeam: true } },
+      ruleMatches: {
+        select: {
+          riskRuleId: true,
+          riskRule: { select: { id: true, name: true, category: true } },
         },
       },
-    }),
-    prisma.aiCallLog.findMany({
-      where: {
-        ...scopedCallLogWhere(scope, filters.applicationId),
-        ...(filters.level ? { level: filters.level } : {}),
-        ...(filters.environment ? { environment: filters.environment } : {}),
-        ...(filters.action ? { action: filters.action } : {}),
-      },
-      include: {
-        application: true,
-      },
-    }),
+    },
+  });
+}
+
+async function loadCallLogSegments(
+  where: ReturnType<typeof scopedCallLogWhere>,
+  column: "applicationId" | "environment" | "userRef" | "model",
+  label: (key: string) => string,
+): Promise<CallLogSegment[]> {
+  const groups = await prisma.aiCallLog.groupBy({
+    by: [column, "action"],
+    where,
+    _count: { _all: true },
+  });
+  const segments = new Map<string, CallLogSegment>();
+
+  for (const group of groups) {
+    const key = group[column];
+    const segment = segments.get(key) ?? { key, label: label(key), callLogs: 0, blockedCalls: 0 };
+
+    segment.callLogs += group._count._all;
+    if (group.action === "block") segment.blockedCalls += group._count._all;
+    segments.set(key, segment);
+  }
+
+  return [...segments.values()].sort((a, b) => b.callLogs - a.callLogs || a.key.localeCompare(b.key));
+}
+
+async function loadCallLogStats(scope: RequestScope, filters: AnalyticsFilters): Promise<CallLogStats> {
+  const where = {
+    ...scopedCallLogWhere(scope, filters.applicationId),
+    ...analyticsWhere(filters),
+  };
+  const applications = await prisma.application.findMany({ select: { id: true, name: true } });
+  const applicationNames = new Map(applications.map((application) => [application.id, application.name]));
+  const [application, environment, user, model] = await Promise.all([
+    loadCallLogSegments(where, "applicationId", (key) => applicationNames.get(key) ?? key),
+    loadCallLogSegments(where, "environment", titleCase),
+    loadCallLogSegments(where, "userRef", (key) => key),
+    loadCallLogSegments(where, "model", (key) => key),
+  ]);
+
+  return {
+    total: environment.reduce((sum, segment) => sum + segment.callLogs, 0),
+    blocked: environment.reduce((sum, segment) => sum + segment.blockedCalls, 0),
+    segments: { application, environment, user, model },
+  };
+}
+
+export async function loadAnalyticsDataset(scope: RequestScope, filters: AnalyticsFilters) {
+  const [riskEvents, callLogs] = await Promise.all([
+    loadRiskEvents(scope, filters),
+    loadCallLogStats(scope, filters),
   ]);
 
   return { riskEvents, callLogs };
 }
 
-export function analyticsSummary(riskEvents: AnalyticsRiskEvent[], callLogs: AnalyticsCallLog[]) {
+export function analyticsSummary(riskEvents: AnalyticsRiskEvent[], callLogs: CallLogStats) {
   const highSevereEvents = riskEvents.filter((event) => isHighSevere(event.level)).length;
-  const blockedCalls = callLogs.filter((log) => log.action === "block").length;
+  const blockedCalls = callLogs.blocked;
 
   return {
     riskEvents: riskEvents.length,
-    modelCalls: callLogs.length,
+    modelCalls: callLogs.total,
     highSevereEvents,
     highSevereRate: percentage(highSevereEvents, riskEvents.length),
-    riskEventRate: percentage(riskEvents.length, callLogs.length),
-    blockRate: percentage(blockedCalls, callLogs.length),
+    riskEventRate: percentage(riskEvents.length, callLogs.total),
+    blockRate: percentage(blockedCalls, callLogs.total),
     averageRiskScore: average(riskEvents.map((event) => event.score)),
     blockedModelCalls: blockedCalls,
   };
 }
 
-export function analyticsDrivers(riskEvents: AnalyticsRiskEvent[], callLogs: AnalyticsCallLog[]) {
+export function analyticsDrivers(riskEvents: AnalyticsRiskEvent[], callLogs: CallLogStats) {
   return {
     applications: applicationDrivers(riskEvents, callLogs),
     categories: categoryDrivers(riskEvents),
     rules: ruleDrivers(riskEvents),
-    environments: eventDrivers(riskEvents, callLogs, {
+    environments: eventDrivers(riskEvents, {
       getEventKey: (event) => event.environment,
       getEventLabel: (event) => titleCase(event.environment),
-      getLogKey: (log) => log.environment,
-      getLogLabel: (log) => titleCase(log.environment),
+      segments: callLogs.segments.environment,
       detail: "Environment risk concentration",
     }),
-    departments: eventDrivers(riskEvents, callLogs, {
+    departments: eventDrivers(riskEvents, {
       getEventKey: (event) => event.department,
       getEventLabel: (event) => event.department,
-      getLogKey: () => "",
-      getLogLabel: () => "",
       detail: "Department or data segment",
     }),
-    users: eventDrivers(riskEvents, callLogs, {
+    users: eventDrivers(riskEvents, {
       getEventKey: (event) => event.userRef,
       getEventLabel: (event) => event.userRef,
-      getLogKey: (log) => log.userRef,
-      getLogLabel: (log) => log.userRef,
+      segments: callLogs.segments.user,
       detail: "User or role segment",
     }),
-    models: eventDrivers(riskEvents, callLogs, {
+    models: eventDrivers(riskEvents, {
       getEventKey: (event) => event.model,
       getEventLabel: (event) => event.model,
-      getLogKey: (log) => log.model,
-      getLogLabel: (log) => log.model,
+      segments: callLogs.segments.model,
       detail: "Model segment",
     }),
   };
@@ -164,7 +230,7 @@ export function applicationAnalytics(
     fieldCoverage: number;
   },
   riskEvents: AnalyticsRiskEvent[],
-  callLogs: AnalyticsCallLog[],
+  callLogs: CallLogStats,
 ) {
   const summary = analyticsSummary(riskEvents, callLogs);
   const drivers = analyticsDrivers(riskEvents, callLogs);
@@ -276,13 +342,12 @@ export function analyticsDrilldown(
   };
 }
 
-function applicationDrivers(riskEvents: AnalyticsRiskEvent[], callLogs: AnalyticsCallLog[]) {
-  return eventDrivers(riskEvents, callLogs, {
+function applicationDrivers(riskEvents: AnalyticsRiskEvent[], callLogs: CallLogStats) {
+  return eventDrivers(riskEvents, {
     getEventKey: (event) => event.applicationId,
     getEventLabel: (event) => event.application.name,
     getEventDetail: (event) => event.application.ownerTeam,
-    getLogKey: (log) => log.applicationId,
-    getLogLabel: (log) => log.application.name,
+    segments: callLogs.segments.application,
     detail: "Application risk pressure",
   });
 }
@@ -315,13 +380,11 @@ function ruleDrivers(riskEvents: AnalyticsRiskEvent[]) {
 
 function eventDrivers(
   riskEvents: AnalyticsRiskEvent[],
-  callLogs: AnalyticsCallLog[],
   config: {
     getEventKey: (event: AnalyticsRiskEvent) => string;
     getEventLabel: (event: AnalyticsRiskEvent) => string;
     getEventDetail?: (event: AnalyticsRiskEvent) => string;
-    getLogKey: (log: AnalyticsCallLog) => string;
-    getLogLabel: (log: AnalyticsCallLog) => string;
+    segments?: CallLogSegment[];
     detail: string;
   },
 ) {
@@ -334,12 +397,10 @@ function eventDrivers(
     addEventToBucket(bucket, event, mainRule);
   }
 
-  for (const log of callLogs) {
-    const key = config.getLogKey(log);
-    if (!key) continue;
-    const bucket = getBucket(buckets, key, config.getLogLabel(log), config.detail);
-    bucket.callLogs += 1;
-    if (log.action === "block") bucket.blockedCalls += 1;
+  for (const segment of config.segments ?? []) {
+    const bucket = getBucket(buckets, segment.key, segment.label, config.detail);
+    bucket.callLogs += segment.callLogs;
+    bucket.blockedCalls += segment.blockedCalls;
   }
 
   return finalizeBuckets(buckets);

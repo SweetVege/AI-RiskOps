@@ -1,5 +1,5 @@
 import "dotenv/config";
-import fs from "node:fs";
+import { permissionSets, policyTemplates, riskRules } from "./reference-data.mjs";
 import prismaPkg from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
@@ -15,77 +15,12 @@ const prisma = new PrismaClient({ adapter });
 
 const now = new Date("2026-07-08T00:00:00.000Z");
 
-const riskRules = JSON.parse(fs.readFileSync(new URL("../lib/risk-rules.json", import.meta.url), "utf8"))
-  .map((rule) => [rule.id, rule.name, rule.category, rule.trigger, rule.baseScore, rule.defaultAction, rule.iconName]);
-
-const policyTemplates = [
-  ["policy-customer-support", "Customer Support Copilot Policy", "Support bots, ticket summarization, customer follow-up assistants", "Redaction first", "60+ review, 80+ block", true, ["PI-001", "SYS-001", "DLP-001", "PI-002", "ABUSE-001"]],
-  ["policy-rag-kb", "RAG Knowledge Base Policy", "Internal knowledge bases, contract review, web-retrieval assistants", "Injection blocking", "50+ flag, 65+ block", true, ["PI-002", "DLP-001", "DLP-002"]],
-  ["policy-finance-agent", "Finance Agent Policy", "Payment approval, expense review, vendor reconciliation agents", "High-risk review", "45+ review, 80+ escalate", true, ["TOOL-001", "ACCESS-001", "DLP-002"]],
-  ["policy-hr-assistant", "HR Assistant Policy", "Employee policy Q&A, compensation and benefits, org-data assistants", "Unauthorized access blocking", "60+ block, 80+ escalate", true, ["ACCESS-001", "DLP-001"]],
-  ["policy-general-low-risk", "General Low-Risk Policy", "Public-knowledge Q&A, low-sensitivity office assistants, test apps", "Flag for observation", "60+ flag, 85+ review", false, ["ABUSE-001", "DLP-001"]],
-];
-
 const applications = [
   ["app-cs-copilot", "Customer Support Copilot", "customer-support-copilot", "AI Platform Team", "connected", "policy-customer-support", "proxy", 92],
   ["app-sales-knowledge", "Sales Knowledge Agent", "sales-knowledge-agent", "Revenue Operations", "connected", "policy-rag-kb", "proxy", 88],
   ["app-finance-agent", "Finance Approval Agent", "finance-approval-agent", "Finance Automation", "validating", "policy-finance-agent", "sdk", 78],
   ["app-hr-policy", "HR Policy Assistant", "hr-policy-assistant", "People Systems", "connected", "policy-hr-assistant", "log_ingestion", 86],
   ["app-internal-kb", "Internal Knowledge Assistant", "internal-knowledge-assistant", "IT Operations", "pending_validation", "policy-general-low-risk", "log_ingestion", 54],
-];
-
-const permissionSets = [
-  {
-    id: "perm-global-user",
-    name: "Global User",
-    description: "Global read access with lightweight risk-event review metadata updates.",
-    dataScope: "global",
-    capabilities: [
-      "canViewOverview",
-      "canViewRiskAnalytics",
-      "canViewRiskEvents",
-      "canViewCallLogs",
-      "canViewApplications",
-      "canUpdateRiskEventReview",
-      "canExportAnalytics",
-    ],
-  },
-  {
-    id: "perm-app-owner",
-    name: "App Owner",
-    description: "Assigned-application read access for application owners.",
-    dataScope: "assigned_applications",
-    capabilities: [
-      "canViewOverview",
-      "canViewRiskAnalytics",
-      "canViewRiskEvents",
-      "canViewCallLogs",
-      "canViewApplications",
-      "canExportAnalytics",
-    ],
-  },
-  {
-    id: "perm-platform-admin",
-    name: "Platform Admin",
-    description: "Global platform administration, policy, credential, setup, review, and export access.",
-    dataScope: "global",
-    capabilities: [
-      "canViewOverview",
-      "canViewRiskAnalytics",
-      "canViewRiskEvents",
-      "canViewCallLogs",
-      "canViewApplications",
-      "canViewPolicyCenter",
-      "canManagePolicyCenter",
-      "canViewApplicationSetup",
-      "canManageApplicationSetup",
-      "canCreateApplications",
-      "canManageCredentials",
-      "canManageUserAccess",
-      "canUpdateRiskEventReview",
-      "canExportAnalytics",
-    ],
-  },
 ];
 
 const applicationCredentials = [

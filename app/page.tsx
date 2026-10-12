@@ -1578,7 +1578,7 @@ type ModelCallIngestionApi = {
   riskEvent: {
     id: string;
   } | null;
-  evaluation: RiskEvaluation;
+  evaluation: RiskEvaluation | null;
 };
 
 function profileQueryValue(profile: UserProfile) {

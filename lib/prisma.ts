@@ -7,7 +7,12 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is required. Configure a Postgres connection string before starting AI RiskOps.");
 }
 
-const adapter = new PrismaPg({ connectionString: databaseUrl });
+const poolMax = Number.parseInt(process.env.DATABASE_POOL_MAX ?? "", 10);
+
+const adapter = new PrismaPg({
+  connectionString: databaseUrl,
+  ...(poolMax > 0 ? { max: poolMax } : {}),
+});
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;

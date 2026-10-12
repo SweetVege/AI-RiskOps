@@ -78,6 +78,7 @@ export function PolicyCenter({
         reviewedFalsePositiveRate: policyRule.operationalStat.reviewedFalsePositiveRate,
         policyRuleCount: 1,
         enabledPolicyRuleCount: policyRule.enabled ? 1 : 0,
+        baseline: policyRule.riskRule.baseline === true,
       });
       return items;
     }, new Map<string, PolicyRuleRow>()).values(),
@@ -270,7 +271,7 @@ export function PolicyCenter({
                   <span className="min-w-0">
                     <span className="block truncate font-medium text-ink">{rule.name}</span>
                     <span className="mt-1 block truncate text-xs text-slate-500">
-                      {stateLabel} · {rule.trigger}
+                      {rule.baseline ? "Baseline" : stateLabel} · {rule.trigger}
                     </span>
                   </span>
                   <span className="text-slate-600">{rule.category}</span>
@@ -289,14 +290,15 @@ export function PolicyCenter({
                   <button
                     type="button"
                     onClick={() => toggleRule(rule.id, !isRuleEnabled)}
-                    disabled={pendingAction !== null || !policyRules.length}
+                    disabled={rule.baseline || pendingAction !== null || !policyRules.length}
+                    title={rule.baseline ? "Baseline rules apply to every application and cannot be disabled." : undefined}
                     className={`inline-flex h-8 items-center justify-center rounded-lg border px-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60 ${
-                      isRuleEnabled
+                      rule.baseline || isRuleEnabled
                         ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                         : "border-line bg-slate-50 text-slate-600"
                     }`}
                   >
-                    {pendingAction === `rule-${rule.id}` ? "Saving" : stateLabel}
+                    {rule.baseline ? "Always on" : pendingAction === `rule-${rule.id}` ? "Saving" : stateLabel}
                   </button>
                 </div>
               );

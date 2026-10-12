@@ -4,7 +4,7 @@ import type { RiskAction } from "@/lib/risk-data";
 import type { EvaluationPolicy, PolicyRuleSetting } from "@/lib/risk-engine";
 
 // Enterprise baseline: enforced for every application regardless of its policy template.
-export const baselineRuleIds: readonly string[] = ["DLP-002", "ACCESS-001", "TOOL-001", "SYS-001"];
+export const baselineRuleIds: readonly string[] = ["PI-001", "PI-002", "DLP-002", "ACCESS-001", "TOOL-001", "SYS-001"];
 
 const riskActions: readonly string[] = ["allow", "flag", "redact", "review", "block"];
 

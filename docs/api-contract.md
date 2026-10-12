@@ -710,7 +710,7 @@ Policy evaluation:
 
 - Detection uses the rule catalog in the database (`RiskRule`) and the policy template bound to the application.
 - A rule produces findings when the application's template enables it. An application without a template uses every catalog rule.
-- Baseline rules `DLP-002`, `ACCESS-001`, `TOOL-001`, and `SYS-001` always apply and cannot be disabled through Policy Center.
+- Baseline rules `PI-001`, `PI-002`, `DLP-002`, `ACCESS-001`, `TOOL-001`, and `SYS-001` always apply and cannot be disabled through Policy Center. The Policy Center response marks them with `riskRule.baseline: true`.
 - A template rule's `actionOverride` replaces the rule's default action. `thresholdOverride` is stored but not evaluated yet.
 - Disabling a template does not change detection for applications already bound to it.
 - The response includes `ingestion.policy` with the `templateId` and `activeRuleIds` used for the call.

@@ -9,20 +9,24 @@ export type ApiErrorCode =
   | "UNAUTHORIZED"
   | "NOT_FOUND"
   | "FORBIDDEN"
+  | "RATE_LIMITED"
   | "INTERNAL_ERROR";
 
 function requestId() {
   return `req-${crypto.randomUUID().slice(0, 8)}`;
 }
 
-export function apiOk(payload: ApiPayload = {}) {
-  return NextResponse.json({
-    success: true,
-    ...payload,
-    meta: {
-      requestId: requestId(),
+export function apiOk(payload: ApiPayload = {}, status = 200) {
+  return NextResponse.json(
+    {
+      success: true,
+      ...payload,
+      meta: {
+        requestId: requestId(),
+      },
     },
-  });
+    { status },
+  );
 }
 
 export function apiCreated(payload: ApiPayload = {}) {
@@ -43,6 +47,7 @@ export function apiError(
   errorCode: ApiErrorCode,
   message: string,
   details?: Record<string, unknown>,
+  headers?: Record<string, string>,
 ) {
   return NextResponse.json(
     {
@@ -54,6 +59,6 @@ export function apiError(
         requestId: requestId(),
       },
     },
-    { status },
+    { status, headers },
   );
 }

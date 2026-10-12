@@ -15,6 +15,8 @@ export default defineConfig({
     env: {
       // Port must match tests/test-database.ts.
       DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:54329/postgres?sslmode=disable",
+      // PGlite is a single session; one pooled connection keeps transaction semantics exact.
+      DATABASE_POOL_MAX: "1",
     },
   },
 });

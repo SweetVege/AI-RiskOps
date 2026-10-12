@@ -50,6 +50,16 @@ export type ProductionModelCallIngestionBody = {
 export const ingestionContract = {
   version: ingestionContractVersion,
   endpoint: "POST /api/ingest/model-call",
+  batchEndpoint: "POST /api/ingest/model-calls/batch",
+  idempotency: {
+    key: "application + request.traceId",
+    behavior: "Resending a trace ID that was already stored returns 200 with the existing call log and duplicate: true; nothing is written twice.",
+  },
+  limits: {
+    maxTextFieldLength: 8000,
+    maxBatchSize: 100,
+    rateLimit: "Per application credential per minute; exceeding it returns 429 with Retry-After.",
+  },
   auth: {
     currentPrototype: "profile query parameter remains available for demo and admin simulation flows",
     productionTarget: "Authorization: Bearer <application_api_key>",

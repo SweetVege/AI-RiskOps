@@ -168,6 +168,7 @@ model IngestionRequestAudit {
   @@index([status])
   @@index([applicationId])
   @@index([credentialId])
+  @@index([credentialId, occurredAt])
   @@index([traceId])
   @@index([errorCode])
 }
@@ -261,6 +262,7 @@ model AiCallLog {
   application   Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   riskEvent     RiskEvent?
 
+  @@unique([applicationId, traceId])
   @@index([applicationId])
   @@index([occurredAt])
 }

@@ -698,7 +698,56 @@ Supported data types:
 - `Employee Data`
 - `General Data`
 
-Maximum captured text field length: `8000` characters.
+Maximum captured text field length: `8000` characters. Identifier and label fields are limited to `200` characters.
+
+Validation:
+
+- The body is validated against a schema. Wrong field types, an unsupported `environment`, `ingestionSource`, or `dataType`, and a `request.occurredAt` that is not an ISO 8601 timestamp with offset return `400 VALIDATION_ERROR` with `details.issues`.
+
+Idempotency:
+
+- `request.traceId` (or `x-ai-riskops-trace-id`) is unique per application.
+- Resending a stored trace ID returns `200` with the existing `callLog` and `riskEvent`, `ingestion.duplicate: true`, and `evaluation: null`. Nothing is written twice.
+- Requests without a trace ID get a generated one and are never deduplicated.
+
+Atomicity:
+
+- The call log, risk event, rule matches, evidence, credential usage, setup validation, and success audit are written in one transaction.
+- If the write fails the API returns `500 INTERNAL_ERROR`, nothing is stored except a failed audit record, and the request can be retried with the same trace ID.
+
+Rate limit:
+
+- Credential-authenticated requests are limited per credential per minute (`INGEST_RATE_LIMIT_PER_MINUTE`, default `600`, `0` disables).
+- Exceeding the limit returns `429 RATE_LIMITED` with `Retry-After: 60`.
+
+### `POST /api/ingest/model-calls/batch`
+
+Ingests up to `100` model calls in one request. Requires `Authorization: Bearer <application_api_key>`; profile scope is not accepted.
+
+```json
+{
+  "calls": [
+    { "request": { "traceId": "trace-001" }, "content": { "prompt": "..." } },
+    { "request": { "traceId": "trace-002" }, "content": { "prompt": "..." } }
+  ]
+}
+```
+
+Each item uses the same body as `POST /api/ingest/model-call` and is processed independently in order. The response is `200` with a per-item result:
+
+```json
+{
+  "data": {
+    "summary": { "received": 2, "created": 1, "duplicate": 0, "rejected": 1 },
+    "results": [
+      { "index": 0, "status": "created", "traceId": "trace-001", "callLogId": "call-...", "riskEventId": null, "score": 0, "level": "low", "action": "allow" },
+      { "index": 1, "status": "rejected", "traceId": "trace-002", "errorCode": "VALIDATION_ERROR", "error": "..." }
+    ]
+  }
+}
+```
+
+The whole batch is rejected with `401`, `400`, or `429` when the credential is missing or invalid, the body is not `{ "calls": [1..100 items] }`, or the batch would exceed the rate limit.
 
 Production-style body:
 

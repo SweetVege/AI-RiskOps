@@ -31,3 +31,5 @@ pnpm-debug.log*
 
 # generated reports and demo exports
 output/
+
+*.tsbuildinfo

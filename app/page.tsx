@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { signOutAction } from "@/app/login/actions";
-import RiskOpsApp, { type AppSession } from "@/app/riskops-app";
-import { permissionsForScope } from "@/lib/api/permissions";
+import RiskOpsApp, { type AppSession } from "@/app/riskops/app";
+import { capabilityKeys, permissionsForScope } from "@/lib/api/permissions";
 import { resolveUserScope, type ApiProfile } from "@/lib/api/scope";
 import { getSessionUser } from "@/lib/auth";
 import { isDemoMode } from "@/lib/demo-mode";
@@ -14,9 +14,27 @@ const profileLabels: Record<ApiProfile, AppSession["profile"]> = {
   "platform-admin": "Platform Admin",
 };
 
-export default async function Page() {
+type PageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function Page({ searchParams }: PageProps) {
+  const query = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(await searchParams)) {
+    for (const item of Array.isArray(value) ? value : [value ?? ""]) {
+      query.append(key, item);
+    }
+  }
+
+  const initialSearch = query.toString();
+
   if (isDemoMode()) {
-    return <RiskOpsApp session={{ demoMode: true, profile: "Platform Admin", user: null }} />;
+    return (
+      <RiskOpsApp
+        session={{ demoMode: true, profile: "Platform Admin", user: null, permissions: null, assignedApplicationCount: null, initialSearch }}
+      />
+    );
   }
 
   const user = await getSessionUser();
@@ -28,7 +46,7 @@ export default async function Page() {
   const scope = await resolveUserScope(user);
   const permissions = await permissionsForScope(scope);
 
-  if (!permissions.canViewOverview) {
+  if (!capabilityKeys.some((capability) => permissions[capability])) {
     return (
       <main className="grid min-h-screen place-items-center bg-panel px-6">
         <div className="w-full max-w-sm rounded-lg border border-line bg-white p-8">
@@ -50,5 +68,16 @@ export default async function Page() {
     );
   }
 
-  return <RiskOpsApp session={{ demoMode: false, profile: profileLabels[scope.profile], user }} />;
+  return (
+    <RiskOpsApp
+      session={{
+        demoMode: false,
+        profile: profileLabels[scope.profile],
+        user,
+        permissions,
+        assignedApplicationCount: scope.isGlobal ? null : scope.applicationIds?.length ?? 0,
+        initialSearch,
+      }}
+    />
+  );
 }

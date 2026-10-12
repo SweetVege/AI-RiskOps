@@ -1,7 +1,8 @@
+import { authorizeRequest } from "@/lib/api/authorize";
 import { apiError, apiOk } from "@/lib/api/response";
 import { dataProtectionMeta, protectCapturedFields, protectCapturedText } from "@/lib/api/data-protection";
 import { permissionsForScope } from "@/lib/api/permissions";
-import { resolveRequestScope, scopedRiskEventWhere, scopeResponse } from "@/lib/api/scope";
+import { scopedRiskEventWhere, scopeResponse } from "@/lib/api/scope";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -22,8 +23,13 @@ const reviewStatuses = new Set([
 
 export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request, "canViewRiskEvents");
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
 
   const event = await prisma.riskEvent.findFirst({
     where: {
@@ -103,8 +109,13 @@ export async function GET(request: Request, context: RouteContext) {
 
 export async function PATCH(request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request, "canViewRiskEvents");
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
   const permissions = await permissionsForScope(scope);
 
   if (!permissions.canUpdateRiskEventReview) {

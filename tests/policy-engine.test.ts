@@ -5,7 +5,8 @@ import { baselineRuleIds, buildEffectivePolicy } from "@/lib/policy/effective-po
 import { prisma } from "@/lib/prisma";
 import { riskRules } from "@/lib/risk-data";
 import { evaluateAiCall, type SandboxInput } from "@/lib/risk-engine";
-import { createCredential, fixtureIds, jsonRequest, seedFixtures } from "./helpers/fixtures";
+import { createCredential, fixtureIds, fixtureUsers, jsonRequest, seedFixtures } from "./helpers/fixtures";
+import { signInAs } from "./helpers/session";
 
 const injectionInput: SandboxInput = {
   templateId: "test",
@@ -131,8 +132,10 @@ describe("POST policy-center rule toggle", () => {
   });
 
   function toggle(ruleId: string, enabled: boolean) {
+    signInAs(fixtureUsers.admin);
+
     return toggleRule(
-      jsonRequest(`/api/admin/policy-center/rules/${ruleId}/toggle?profile=platform-admin`, { method: "POST", body: { enabled } }),
+      jsonRequest(`/api/admin/policy-center/rules/${ruleId}/toggle`, { method: "POST", body: { enabled } }),
       { params: Promise.resolve({ id: ruleId }) },
     );
   }

@@ -42,7 +42,50 @@ export function permissionsForProfile(profile: ApiProfile): ApiPermissions {
   };
 }
 
+export const capabilityKeys = [
+  "canViewOverview",
+  "canViewRiskAnalytics",
+  "canViewRiskEvents",
+  "canViewCallLogs",
+  "canViewApplications",
+  "canViewPolicyCenter",
+  "canManagePolicyCenter",
+  "canViewApplicationSetup",
+  "canManageApplicationSetup",
+  "canCreateApplications",
+  "canManageCredentials",
+  "canManageUserAccess",
+  "canUpdateRiskEventReview",
+  "canExportAnalytics",
+] as const satisfies ReadonlyArray<ApiCapability>;
+
+type PermissionSetAssignment = {
+  permissionSet: {
+    dataScope: string;
+    capabilities: Array<{ capability: string }>;
+  };
+};
+
+export function permissionsFromAssignments(assignments: PermissionSetAssignment[]): ApiPermissions {
+  const granted = new Set(assignments.flatMap((assignment) =>
+    assignment.permissionSet.capabilities.map((capability) => capability.capability),
+  ));
+  // A user with no permission set has no capabilities and no application scope.
+  const dataScope = !assignments.length || assignments.some((assignment) => assignment.permissionSet.dataScope === "assigned_applications")
+    ? "assigned_applications"
+    : "global";
+
+  return {
+    dataScope,
+    ...Object.fromEntries(capabilityKeys.map((capability) => [capability, granted.has(capability)])),
+  } as ApiPermissions;
+}
+
 export async function permissionsForScope(scope: RequestScope): Promise<ApiPermissions> {
+  if (scope.permissions) {
+    return scope.permissions;
+  }
+
   const assignments = await prisma.userPermissionSetAssignment.findMany({
     where: { userId: scope.userId },
     include: {
@@ -58,30 +101,7 @@ export async function permissionsForScope(scope: RequestScope): Promise<ApiPermi
     return permissionsForProfile(scope.profile);
   }
 
-  const capabilities = new Set(assignments.flatMap((assignment) =>
-    assignment.permissionSet.capabilities.map((capability) => capability.capability),
-  ));
-  const dataScope = assignments.some((assignment) => assignment.permissionSet.dataScope === "assigned_applications")
-    ? "assigned_applications"
-    : "global";
-
-  return {
-    dataScope,
-    canViewOverview: capabilities.has("canViewOverview"),
-    canViewRiskAnalytics: capabilities.has("canViewRiskAnalytics"),
-    canViewRiskEvents: capabilities.has("canViewRiskEvents"),
-    canViewCallLogs: capabilities.has("canViewCallLogs"),
-    canViewApplications: capabilities.has("canViewApplications"),
-    canViewPolicyCenter: capabilities.has("canViewPolicyCenter"),
-    canManagePolicyCenter: capabilities.has("canManagePolicyCenter"),
-    canViewApplicationSetup: capabilities.has("canViewApplicationSetup"),
-    canManageApplicationSetup: capabilities.has("canManageApplicationSetup"),
-    canCreateApplications: capabilities.has("canCreateApplications"),
-    canManageCredentials: capabilities.has("canManageCredentials"),
-    canManageUserAccess: capabilities.has("canManageUserAccess"),
-    canUpdateRiskEventReview: capabilities.has("canUpdateRiskEventReview"),
-    canExportAnalytics: capabilities.has("canExportAnalytics"),
-  };
+  return permissionsFromAssignments(assignments);
 }
 
 export type ApiCapability = {

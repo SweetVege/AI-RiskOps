@@ -1,14 +1,20 @@
+import { authorizeRequest } from "@/lib/api/authorize";
 import { formatPolicyRule, formatPolicyTemplate } from "@/lib/api/policy-center";
 import { capabilityErrorMessage, hasCapability } from "@/lib/api/permissions";
 import { apiError, apiOk } from "@/lib/api/response";
-import { resolveRequestScope, scopeResponse } from "@/lib/api/scope";
+import { scopeResponse } from "@/lib/api/scope";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request);
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
 
   if (!(await hasCapability(scope, "canViewPolicyCenter"))) {
     return apiError(403, "FORBIDDEN", capabilityErrorMessage("canViewPolicyCenter"));

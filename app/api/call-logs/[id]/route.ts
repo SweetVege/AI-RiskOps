@@ -1,6 +1,7 @@
+import { authorizeRequest } from "@/lib/api/authorize";
 import { apiError, apiOk } from "@/lib/api/response";
 import { dataProtectionMeta, protectCapturedFields, protectCapturedText } from "@/lib/api/data-protection";
-import { resolveRequestScope, scopedCallLogWhere, scopeResponse } from "@/lib/api/scope";
+import { scopedCallLogWhere, scopeResponse } from "@/lib/api/scope";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +12,13 @@ type RouteContext = {
 
 export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
-  const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request, "canViewCallLogs");
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
 
   const callLog = await prisma.aiCallLog.findFirst({
     where: {

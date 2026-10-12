@@ -1,13 +1,20 @@
+import { authorizeRequest } from "@/lib/api/authorize";
 import { apiOk } from "@/lib/api/response";
 import { average } from "@/lib/api/overview";
-import { resolveRequestScope, scopedApplicationWhere, scopeResponse } from "@/lib/api/scope";
+import { scopedApplicationWhere, scopeResponse } from "@/lib/api/scope";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request, "canViewOverview");
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
   const limit = Number(searchParams.get("limit") ?? 5);
 
   const applications = await prisma.application.findMany({

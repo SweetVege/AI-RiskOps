@@ -1,7 +1,8 @@
+import { authorizeRequest } from "@/lib/api/authorize";
 import { formatApplicationSetup } from "@/lib/api/application-setup";
 import { capabilityErrorMessage, hasCapability } from "@/lib/api/permissions";
 import { apiCreated, apiError, apiOk } from "@/lib/api/response";
-import { resolveRequestScope, scopeResponse } from "@/lib/api/scope";
+import { scopeResponse } from "@/lib/api/scope";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -35,8 +36,13 @@ function integrationSource(value: string | null | undefined) {
 }
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request);
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
 
   if (!(await hasCapability(scope, "canViewApplicationSetup"))) {
     return apiError(403, "FORBIDDEN", capabilityErrorMessage("canViewApplicationSetup"));
@@ -104,8 +110,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request);
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
 
   if (!(await hasCapability(scope, "canCreateApplications"))) {
     return apiError(403, "FORBIDDEN", capabilityErrorMessage("canCreateApplications"));

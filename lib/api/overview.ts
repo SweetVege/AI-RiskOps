@@ -27,6 +27,10 @@ export function average(values: number[]) {
   return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10;
 }
 
+export function averageOf(total: number, count: number) {
+  return count === 0 ? 0 : Math.round((total / count) * 10) / 10;
+}
+
 export function trendBucket(date: Date, period: TrendPeriod) {
   const year = date.getUTCFullYear();
   const month = date.getUTCMonth();

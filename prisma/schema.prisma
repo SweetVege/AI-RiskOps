@@ -264,6 +264,7 @@ model AiCallLog {
 
   @@unique([applicationId, traceId])
   @@index([applicationId])
+  @@index([applicationId, occurredAt])
   @@index([occurredAt])
 }
 
@@ -293,6 +294,7 @@ model RiskEvent {
   evidence        RiskEventEvidence[]
 
   @@index([applicationId])
+  @@index([applicationId, occurredAt])
   @@index([sourceCallLogId])
   @@index([occurredAt])
   @@index([level])

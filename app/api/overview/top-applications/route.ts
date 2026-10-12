@@ -1,6 +1,7 @@
 import { authorizeRequest } from "@/lib/api/authorize";
 import { apiOk } from "@/lib/api/response";
-import { average } from "@/lib/api/overview";
+import { loadApplicationRiskStats } from "@/lib/api/application-stats";
+import { averageOf } from "@/lib/api/overview";
 import { scopedApplicationWhere, scopeResponse } from "@/lib/api/scope";
 import { prisma } from "@/lib/prisma";
 
@@ -19,41 +20,26 @@ export async function GET(request: Request) {
 
   const applications = await prisma.application.findMany({
     where: scopedApplicationWhere(scope),
-    include: {
-      riskEvents: {
-        select: {
-          id: true,
-          level: true,
-          score: true,
-          action: true,
-        },
-      },
-      _count: {
-        select: {
-          callLogs: true,
-          riskEvents: true,
-        },
-      },
-    },
+    select: { id: true, name: true, slug: true, ownerTeam: true },
   });
+  const stats = await loadApplicationRiskStats(applications.map((application) => application.id));
 
   const rankedApplications = applications
     .map((application) => {
-      const severeCount = application.riskEvents.filter((event) => event.level === "severe").length;
-      const highCount = application.riskEvents.filter((event) => event.level === "high").length;
+      const applicationStats = stats.get(application.id);
 
       return {
         id: application.id,
         name: application.name,
         slug: application.slug,
         ownerTeam: application.ownerTeam,
-        severeCount,
-        highCount,
-        riskEventCount: application._count.riskEvents,
-        callLogCount: application._count.callLogs,
-        blockedCount: application.riskEvents.filter((event) => event.action === "block").length,
-        averageEventRiskScore: average(application.riskEvents.map((event) => event.score)),
-        maxRiskScore: application.riskEvents.reduce((max, event) => Math.max(max, event.score), 0),
+        severeCount: applicationStats.severeCount,
+        highCount: applicationStats.highCount,
+        riskEventCount: applicationStats.riskEventCount,
+        callLogCount: applicationStats.callLogCount,
+        blockedCount: applicationStats.blockedCount,
+        averageEventRiskScore: averageOf(applicationStats.scoreTotal, applicationStats.riskEventCount),
+        maxRiskScore: applicationStats.maxRiskScore,
       };
     })
     .sort((a, b) => {

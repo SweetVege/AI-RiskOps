@@ -1,6 +1,6 @@
 import { authorizeRequest } from "@/lib/api/authorize";
 import { apiOk } from "@/lib/api/response";
-import { average } from "@/lib/api/overview";
+import { averageOf } from "@/lib/api/overview";
 import { scopedCallLogWhere, scopedRiskEventWhere, scopeResponse } from "@/lib/api/scope";
 import { prisma } from "@/lib/prisma";
 
@@ -15,36 +15,37 @@ export async function GET(request: Request) {
 
   const { scope } = access;
 
-  const [callLogs, riskEvents] = await Promise.all([
-    prisma.aiCallLog.findMany({
+  const [callGroups, eventGroups] = await Promise.all([
+    prisma.aiCallLog.groupBy({
+      by: ["action"],
       where: scopedCallLogWhere(scope),
-      select: {
-        id: true,
-        action: true,
-        score: true,
-      },
+      _count: { _all: true },
     }),
-    prisma.riskEvent.findMany({
+    prisma.riskEvent.groupBy({
+      by: ["level", "action"],
       where: scopedRiskEventWhere(scope),
-      select: {
-        id: true,
-        action: true,
-        score: true,
-        level: true,
-      },
+      _count: { _all: true },
+      _sum: { score: true },
     }),
   ]);
+  const countCalls = (action?: string) => callGroups
+    .filter((group) => !action || group.action === action)
+    .reduce((sum, group) => sum + group._count._all, 0);
+  const countEvents = (match: { level?: string; action?: string } = {}) => eventGroups
+    .filter((group) => (!match.level || group.level === match.level) && (!match.action || group.action === match.action))
+    .reduce((sum, group) => sum + group._count._all, 0);
+  const scoreTotal = eventGroups.reduce((sum, group) => sum + (group._sum.score ?? 0), 0);
 
   return apiOk({
     scope: scopeResponse(scope),
     data: {
-      modelCallsToday: callLogs.length,
-      riskEvents: riskEvents.length,
-      blocked: riskEvents.filter((event) => event.action === "block").length,
-      averageEventRiskScore: average(riskEvents.map((event) => event.score)),
-      severeEvents: riskEvents.filter((event) => event.level === "severe").length,
-      highRiskEvents: riskEvents.filter((event) => event.level === "high").length,
-      blockedModelCalls: callLogs.filter((log) => log.action === "block").length,
+      modelCallsToday: countCalls(),
+      riskEvents: countEvents(),
+      blocked: countEvents({ action: "block" }),
+      averageEventRiskScore: averageOf(scoreTotal, countEvents()),
+      severeEvents: countEvents({ level: "severe" }),
+      highRiskEvents: countEvents({ level: "high" }),
+      blockedModelCalls: countCalls("block"),
     },
   });
 }

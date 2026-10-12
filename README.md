@@ -183,9 +183,18 @@ pnpm run db:push
 pnpm run db:seed
 pnpm run db:reset
 pnpm run db:migrate
+pnpm run db:init
+pnpm run db:dev
 pnpm run lint
 pnpm run typecheck
 pnpm test
+```
+
+`pnpm run db:init` loads only the reference data a real deployment needs (rule catalog, policy templates, permission sets) and no demo applications, calls, or users. It creates what is missing and never overwrites existing rows, so it is safe to rerun. Use it instead of `db:seed` for a database that will hold real data:
+
+```bash
+pnpm run db:migrate
+pnpm run db:init
 ```
 
 `pnpm run db:dev` starts an in-memory Postgres on port 54331 with all migrations applied, for local development without installing Postgres. Point `DATABASE_URL` at the printed URL and run `pnpm run db:seed`.

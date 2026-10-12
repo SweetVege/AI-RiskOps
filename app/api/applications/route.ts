@@ -1,3 +1,4 @@
+import { loadApplicationRiskStats } from "@/lib/api/application-stats";
 import { authorizeRequest } from "@/lib/api/authorize";
 import { apiOk } from "@/lib/api/response";
 import { scopedApplicationWhere, scopeResponse } from "@/lib/api/scope";
@@ -25,33 +26,16 @@ export async function GET(request: Request) {
       validationChecks: {
         orderBy: { label: "asc" },
       },
-      riskEvents: {
-        select: {
-          id: true,
-          level: true,
-          score: true,
-          action: true,
-          reviewStatus: true,
-          occurredAt: true,
-        },
-      },
-      _count: {
-        select: {
-          callLogs: true,
-          riskEvents: true,
-        },
-      },
     },
   });
+
+  const stats = await loadApplicationRiskStats(applications.map((application) => application.id));
 
   return apiOk({
     scope: scopeResponse(scope),
     data: applications.map((application) => {
-      const severeCount = application.riskEvents.filter((event) => event.level === "severe").length;
-      const highCount = application.riskEvents.filter((event) => event.level === "high").length;
-      const latestEventAt = application.riskEvents
-        .map((event) => event.occurredAt)
-        .sort((a, b) => b.getTime() - a.getTime())[0];
+      const applicationStats = stats.get(application.id);
+
 
       return {
         id: application.id,
@@ -71,12 +55,12 @@ export async function GET(request: Request) {
         environments: application.environments,
         validationChecks: application.validationChecks,
         metrics: {
-          callLogCount: application._count.callLogs,
-          riskEventCount: application._count.riskEvents,
-          severeCount,
-          highCount,
-          maxRiskScore: application.riskEvents.reduce((max, event) => Math.max(max, event.score), 0),
-          latestEventAt: latestEventAt?.toISOString() ?? null,
+          callLogCount: applicationStats.callLogCount,
+          riskEventCount: applicationStats.riskEventCount,
+          severeCount: applicationStats.severeCount,
+          highCount: applicationStats.highCount,
+          maxRiskScore: applicationStats.maxRiskScore,
+          latestEventAt: applicationStats.latestEventAt?.toISOString() ?? null,
         },
       };
     }),

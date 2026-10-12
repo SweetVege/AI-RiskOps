@@ -7,7 +7,8 @@ import {
   severityLevels,
   trendBucket,
 } from "@/lib/api/overview";
-import { scopedRiskEventWhere, scopeResponse } from "@/lib/api/scope";
+import { scopeResponse } from "@/lib/api/scope";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -23,15 +24,20 @@ export async function GET(request: Request) {
   const { scope } = access;
   const period = normalizeTrendPeriod(searchParams.get("period"));
 
-  const riskEvents = await prisma.riskEvent.findMany({
-    where: scopedRiskEventWhere(scope),
-    orderBy: { occurredAt: "asc" },
-    select: {
-      id: true,
-      occurredAt: true,
-      level: true,
-    },
-  });
+  const unit = period === "monthly" ? "month" : period === "quarterly" ? "quarter" : "day";
+  const scopeFilter = scope.isGlobal
+    ? Prisma.empty
+    : scope.applicationIds?.length
+      ? Prisma.sql`WHERE "applicationId" IN (${Prisma.join(scope.applicationIds)})`
+      : Prisma.sql`WHERE FALSE`;
+  // occurredAt is stored in UTC, so truncating in the database matches the UTC buckets the API reports.
+  const rows = await prisma.$queryRaw<Array<{ bucket: string; level: string; count: number }>>`
+    SELECT to_char(date_trunc(${unit}, "occurredAt"), 'YYYY-MM-DD') AS bucket, "level", COUNT(*)::int AS count
+    FROM "RiskEvent"
+    ${scopeFilter}
+    GROUP BY 1, 2
+    ORDER BY 1
+  `;
 
   const buckets = new Map<
     string,
@@ -43,8 +49,8 @@ export async function GET(request: Request) {
     }
   >();
 
-  for (const event of riskEvents) {
-    const bucket = trendBucket(event.occurredAt, period);
+  for (const row of rows) {
+    const bucket = trendBucket(new Date(`${row.bucket}T00:00:00.000Z`), period);
     const existing = buckets.get(bucket.key) ?? {
       key: bucket.key,
       label: bucket.label,
@@ -52,9 +58,9 @@ export async function GET(request: Request) {
       severity: emptySeverityCounts(),
     };
 
-    existing.total += 1;
-    if (severityLevels.includes(event.level as (typeof severityLevels)[number])) {
-      existing.severity[event.level as (typeof severityLevels)[number]] += 1;
+    existing.total += row.count;
+    if (severityLevels.includes(row.level as (typeof severityLevels)[number])) {
+      existing.severity[row.level as (typeof severityLevels)[number]] += row.count;
     }
     buckets.set(bucket.key, existing);
   }

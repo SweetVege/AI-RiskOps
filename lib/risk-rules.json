@@ -1,0 +1,74 @@
+[
+  {
+    "id": "PI-001",
+    "name": "Direct Prompt Injection",
+    "category": "Input Attack",
+    "trigger": "User input asks the model to ignore instructions, reveal the system prompt, bypass rules, or act as DAN.",
+    "baseScore": 45,
+    "defaultAction": "review",
+    "iconName": "ShieldAlert"
+  },
+  {
+    "id": "PI-002",
+    "name": "Indirect Prompt Injection",
+    "category": "Context Contamination",
+    "trigger": "RAG documents, web pages, or emails contain hidden instructions that attempt to change model behavior.",
+    "baseScore": 55,
+    "defaultAction": "block",
+    "iconName": "FileWarning"
+  },
+  {
+    "id": "DLP-001",
+    "name": "Personal Sensitive Information",
+    "category": "Data Leakage",
+    "trigger": "Input or output contains phone numbers, government IDs, payment cards, emails, addresses, or other personal data.",
+    "baseScore": 40,
+    "defaultAction": "redact",
+    "iconName": "Eye"
+  },
+  {
+    "id": "DLP-002",
+    "name": "Secret Leakage",
+    "category": "Data Leakage",
+    "trigger": "API keys, tokens, secrets, private keys, or database connection strings appear in the request or response.",
+    "baseScore": 75,
+    "defaultAction": "block",
+    "iconName": "KeyRound"
+  },
+  {
+    "id": "SYS-001",
+    "name": "System Prompt Leakage",
+    "category": "Model Configuration Leakage",
+    "trigger": "User asks for the system prompt, or output appears to reveal system rules, tool lists, or internal policies.",
+    "baseScore": 60,
+    "defaultAction": "block",
+    "iconName": "LockKeyhole"
+  },
+  {
+    "id": "TOOL-001",
+    "name": "High-Risk Tool Action",
+    "category": "Agent Behavior",
+    "trigger": "Agent attempts to send email, delete data, export records, submit payment, change permissions, or submit approvals.",
+    "baseScore": 50,
+    "defaultAction": "review",
+    "iconName": "MailWarning"
+  },
+  {
+    "id": "ACCESS-001",
+    "name": "Unauthorized Access",
+    "category": "Access Risk",
+    "trigger": "The current user role is not allowed to access the target data, tool, or customer scope.",
+    "baseScore": 70,
+    "defaultAction": "block",
+    "iconName": "Ban"
+  },
+  {
+    "id": "ABUSE-001",
+    "name": "Abnormal Abuse Pattern",
+    "category": "Behavior Anomaly",
+    "trigger": "Repeated jailbreak attempts, bulk requests, cost spikes, or unusual off-hours access in a short period.",
+    "baseScore": 35,
+    "defaultAction": "flag",
+    "iconName": "Radar"
+  }
+]

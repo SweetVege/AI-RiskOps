@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "node:fs";
 import prismaPkg from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
@@ -14,16 +15,8 @@ const prisma = new PrismaClient({ adapter });
 
 const now = new Date("2026-07-08T00:00:00.000Z");
 
-const riskRules = [
-  ["PI-001", "Direct Prompt Injection", "Input Attack", "User input asks the model to ignore instructions, reveal the system prompt, bypass rules, or act as DAN.", 45, "review", "ShieldAlert"],
-  ["PI-002", "Indirect Prompt Injection", "Context Contamination", "RAG documents, web pages, or emails contain hidden instructions that attempt to change model behavior.", 55, "block", "FileWarning"],
-  ["DLP-001", "Personal Sensitive Information", "Data Leakage", "Input or output contains phone numbers, government IDs, payment cards, emails, addresses, or other personal data.", 40, "redact", "Eye"],
-  ["DLP-002", "Secret Leakage", "Data Leakage", "API keys, tokens, secrets, private keys, or database connection strings appear in the request or response.", 75, "block", "KeyRound"],
-  ["SYS-001", "System Prompt Leakage", "Model Configuration Leakage", "User asks for the system prompt, or output appears to reveal system rules, tool lists, or internal policies.", 60, "block", "LockKeyhole"],
-  ["TOOL-001", "High-Risk Tool Action", "Agent Behavior", "Agent attempts to send email, delete data, export records, submit payment, change permissions, or submit approvals.", 50, "review", "MailWarning"],
-  ["ACCESS-001", "Unauthorized Access", "Access Risk", "The current user role is not allowed to access the target data, tool, or customer scope.", 70, "block", "Ban"],
-  ["ABUSE-001", "Abnormal Abuse Pattern", "Behavior Anomaly", "Repeated jailbreak attempts, bulk requests, cost spikes, or unusual off-hours access in a short period.", 35, "flag", "Radar"],
-];
+const riskRules = JSON.parse(fs.readFileSync(new URL("../lib/risk-rules.json", import.meta.url), "utf8"))
+  .map((rule) => [rule.id, rule.name, rule.category, rule.trigger, rule.baseScore, rule.defaultAction, rule.iconName]);
 
 const policyTemplates = [
   ["policy-customer-support", "Customer Support Copilot Policy", "Support bots, ticket summarization, customer follow-up assistants", "Redaction first", "60+ review, 80+ block", true, ["PI-001", "SYS-001", "DLP-001", "PI-002", "ABUSE-001"]],

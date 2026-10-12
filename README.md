@@ -182,6 +182,18 @@ pnpm run prisma:generate
 pnpm run db:push
 pnpm run db:seed
 pnpm run db:reset
+pnpm run db:migrate
+pnpm run lint
+pnpm run typecheck
+pnpm test
+```
+
+`pnpm test` runs Vitest against an in-process PGlite Postgres built from `prisma/migrations`, so it needs no database or `.env`.
+
+Schema changes go through `prisma/migrations`. A database that was created earlier with `db:push` must be baselined once before `db:migrate`:
+
+```bash
+node node_modules/prisma/build/index.js migrate resolve --applied 20261012000000_init
 ```
 
 ## Environment Variables

@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "db:migrate": "node node_modules/prisma/build/index.js migrate deploy",
     "db:dev": "node scripts/dev-db.mjs",
-    "db:init": "node prisma/init.mjs"
+    "db:init": "node prisma/init.mjs",
+    "test:e2e": "playwright test"
   },
   "prisma": {
     "seed": "node prisma/seed.mjs"
@@ -43,6 +44,7 @@
     "@electric-sql/pglite": "^0.5.9",
     "@electric-sql/pglite-socket": "^0.2.12",
     "@eslint/eslintrc": "^3.3.7",
+    "@playwright/test": "^1.64.0",
     "autoprefixer": "^10.4.20",
     "dotenv": "^17.4.2",
     "eslint": "^9.39.5",

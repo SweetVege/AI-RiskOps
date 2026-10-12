@@ -10,6 +10,7 @@ import { dataProtectionMeta, protectCapturedFields, protectCapturedText } from "
 import type { IngestionSource } from "@/lib/api/ingestion-contract";
 import type { ApiErrorCode } from "@/lib/api/response";
 import { scopedApplicationWhere, type RequestScope } from "@/lib/api/scope";
+import { loadEffectivePolicy } from "@/lib/policy/effective-policy";
 import { auditMetaFromRaw, parseModelCall, type NormalizedIngestion } from "@/lib/ingestion/schema";
 import { prisma } from "@/lib/prisma";
 import { evaluateAiCall, type RiskEvaluation, type SandboxInput } from "@/lib/risk-engine";
@@ -370,7 +371,8 @@ export async function ingestModelCall(context: IngestionContext, raw: unknown): 
     ragContext: normalized.ragContext,
     toolCall: normalized.toolCall,
   };
-  const evaluation = evaluateAiCall(sandboxInput);
+  const policy = await loadEffectivePolicy(application.policyTemplateId);
+  const evaluation = evaluateAiCall(sandboxInput, policy);
   const callLogId = newId("call");
   const riskEventId = evaluation.action === "allow" ? null : newId("evt");
   const output = normalized.output || defaultOutputByAction[evaluation.action];
@@ -483,6 +485,7 @@ export async function ingestModelCall(context: IngestionContext, raw: unknown): 
         ingestion: {
           ...ingestionMeta(context, normalized, application.id),
           duplicate: false,
+          policy: { templateId: policy.templateId, activeRuleIds: policy.activeRuleIds },
           dataProtection: dataProtectionMeta(protectedFields.findings),
         },
         callLog,

@@ -1,3 +1,4 @@
+import { isBaselineRule } from "@/lib/policy/effective-policy";
 export function formatPolicyTemplate(template: {
   id: string;
   name: string;
@@ -57,6 +58,7 @@ export function formatPolicyRule(policyRule: {
     policyTemplate: policyRule.policyTemplate,
     riskRule: {
       id: policyRule.riskRule.id,
+      baseline: isBaselineRule(policyRule.riskRule.id),
       name: policyRule.riskRule.name,
       category: policyRule.riskRule.category,
       trigger: policyRule.riskRule.trigger,

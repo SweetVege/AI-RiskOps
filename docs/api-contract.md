@@ -704,6 +704,15 @@ Validation:
 
 - The body is validated against a schema. Wrong field types, an unsupported `environment`, `ingestionSource`, or `dataType`, and a `request.occurredAt` that is not an ISO 8601 timestamp with offset return `400 VALIDATION_ERROR` with `details.issues`.
 
+Policy evaluation:
+
+- Detection uses the rule catalog in the database (`RiskRule`) and the policy template bound to the application.
+- A rule produces findings when the application's template enables it. An application without a template uses every catalog rule.
+- Baseline rules `DLP-002`, `ACCESS-001`, `TOOL-001`, and `SYS-001` always apply and cannot be disabled through Policy Center.
+- A template rule's `actionOverride` replaces the rule's default action. `thresholdOverride` is stored but not evaluated yet.
+- Disabling a template does not change detection for applications already bound to it.
+- The response includes `ingestion.policy` with the `templateId` and `activeRuleIds` used for the call.
+
 Idempotency:
 
 - `request.traceId` (or `x-ai-riskops-trace-id`) is unique per application.

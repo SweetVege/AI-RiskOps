@@ -39,7 +39,26 @@ export type SandboxTemplate = {
   input: SandboxInput;
 };
 
-const ruleById = new Map(riskRules.map((rule) => [rule.id, rule]));
+export type PolicyRuleSetting = {
+  name: string;
+  category: string;
+  baseScore: number;
+  action: RiskAction;
+};
+
+// Rules absent from the map are inactive: their detectors still run but produce no finding.
+export type EvaluationPolicy = {
+  rules: ReadonlyMap<string, PolicyRuleSetting>;
+};
+
+export const defaultEvaluationPolicy: EvaluationPolicy = {
+  rules: new Map(riskRules.map((rule) => [rule.id, {
+    name: rule.name,
+    category: rule.category,
+    baseScore: rule.baseScore,
+    action: rule.defaultAction,
+  }])),
+};
 
 const actionRank: Record<RiskAction, number> = {
   allow: 0,
@@ -97,31 +116,25 @@ const unauthorizedPatterns = [
   /export_employee|compensation|customer_list|government id|salary|employee record/i,
 ];
 
-function getRule(ruleId: string) {
-  const rule = ruleById.get(ruleId);
-  if (!rule) {
-    throw new Error(`Unknown risk rule: ${ruleId}`);
-  }
-  return rule;
-}
-
 function hasPattern(value: string, patterns: RegExp[]) {
   return patterns.find((pattern) => pattern.test(value));
 }
 
 function addFinding(
   findings: RiskFinding[],
+  policy: EvaluationPolicy,
   ruleId: string,
   location: RiskFinding["location"],
   evidence: string,
 ) {
-  const rule = getRule(ruleId);
+  const rule = policy.rules.get(ruleId);
+  if (!rule) return;
   findings.push({
     ruleId,
     ruleName: rule.name,
     category: rule.category,
     score: rule.baseScore,
-    action: rule.defaultAction,
+    action: rule.action,
     evidence,
     location,
   });
@@ -166,38 +179,38 @@ function buildRecommendation(action: RiskAction, findings: RiskFinding[]) {
   return "Preserve the evidence chain and route the event into the security operations queue; contact the business owner if needed.";
 }
 
-export function evaluateAiCall(input: SandboxInput): RiskEvaluation {
+export function evaluateAiCall(input: SandboxInput, policy: EvaluationPolicy = defaultEvaluationPolicy): RiskEvaluation {
   const findings: RiskFinding[] = [];
   const promptAndOutput = `${input.prompt}\n${input.output}`;
 
   if (hasPattern(input.prompt, promptInjectionPatterns)) {
-    addFinding(findings, "PI-001", "Prompt", "User input appears to ignore rules, jailbreak the model, or request hidden instructions.");
+    addFinding(findings, policy, "PI-001", "Prompt", "User input appears to ignore rules, jailbreak the model, or request hidden instructions.");
   }
 
   if (hasPattern(input.ragContext, indirectInjectionPatterns)) {
-    addFinding(findings, "PI-002", "RAG Context", "Retrieved context contains hidden instructions or text that attempts to change model behavior.");
+    addFinding(findings, policy, "PI-002", "RAG Context", "Retrieved context contains hidden instructions or text that attempts to change model behavior.");
   }
 
   if (hasPattern(promptAndOutput, piiPatterns)) {
-    addFinding(findings, "DLP-001", "Model Output", "Input or output contains personal data such as phone numbers, emails, government IDs, or payment cards.");
+    addFinding(findings, policy, "DLP-001", "Model Output", "Input or output contains personal data such as phone numbers, emails, government IDs, or payment cards.");
   }
 
   if (hasPattern(promptAndOutput, secretPatterns)) {
-    addFinding(findings, "DLP-002", "Prompt", "Input or output contains an API key, token, secret, or private-key pattern.");
+    addFinding(findings, policy, "DLP-002", "Prompt", "Input or output contains an API key, token, secret, or private-key pattern.");
   }
 
   if (hasPattern(promptAndOutput, systemLeakagePatterns)) {
-    addFinding(findings, "SYS-001", "Prompt", "Request or output references system prompts, hidden rules, tool lists, or internal policies.");
+    addFinding(findings, policy, "SYS-001", "Prompt", "Request or output references system prompts, hidden rules, tool lists, or internal policies.");
   }
 
   if (hasPattern(input.toolCall, highRiskToolPatterns)) {
-    addFinding(findings, "TOOL-001", "Tool Call", "Agent is preparing to execute a high-risk action such as email, deletion, export, payment, permission change, or approval submission.");
+    addFinding(findings, policy, "TOOL-001", "Tool Call", "Agent is preparing to execute a high-risk action such as email, deletion, export, payment, permission change, or approval submission.");
   }
 
   const isLowPrivilege = /intern|support|sales|standard employee/i.test(input.userRole);
   const isSensitiveAccess = input.dataType !== "General Data" && hasPattern(`${input.prompt}\n${input.toolCall}`, unauthorizedPatterns);
   if (isLowPrivilege && isSensitiveAccess) {
-    addFinding(findings, "ACCESS-001", "Context", "The current user role does not match the target sensitive data or tool action.");
+    addFinding(findings, policy, "ACCESS-001", "Context", "The current user role does not match the target sensitive data or tool action.");
   }
 
   let score = findings.reduce((total, finding) => total + finding.score, 0);

@@ -2,6 +2,7 @@ import { formatPolicyRule } from "@/lib/api/policy-center";
 import { capabilityErrorMessage, hasCapability } from "@/lib/api/permissions";
 import { apiError, apiOk } from "@/lib/api/response";
 import { resolveRequestScope, scopeResponse } from "@/lib/api/scope";
+import { baselineRuleIds, isBaselineRule } from "@/lib/policy/effective-policy";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,12 @@ export async function POST(
   const body = await readToggleBody(request);
   const isCurrentlyEnabled = existingRules.some((rule) => rule.enabled);
   const enabled = typeof body.enabled === "boolean" ? body.enabled : !isCurrentlyEnabled;
+
+  if (!enabled && isBaselineRule(id)) {
+    return apiError(400, "BAD_REQUEST", `${id} is an enterprise baseline rule and cannot be disabled.`, {
+      baselineRuleIds,
+    });
+  }
 
   const updatedRules = await prisma.$transaction(async (tx) => {
     await tx.policyRule.updateMany({

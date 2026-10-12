@@ -123,14 +123,24 @@ test.describe("signed-in mode", () => {
       const payload = await (await page.request.get(`${authUrl}/api/admin/policy-center`)).json();
 
       return payload.data.policyRules
-        .filter((rule: { riskRule: { id: string } }) => rule.riskRule.id === "PI-001")
+        .filter((rule: { riskRule: { id: string } }) => rule.riskRule.id === "DLP-001")
         .every((rule: { enabled: boolean }) => rule.enabled) as boolean;
     };
 
     expect(await state()).toBe(true);
 
-    const row = page.locator("tr, div").filter({ hasText: /^PI-001/ }).last();
-    const toggled = () => page.waitForResponse((response) => response.url().includes("/rules/PI-001/toggle"));
+    // Baseline rules are always enforced, so their switch is locked.
+    const baselineRow = page.locator("tr, div").filter({ hasText: /^PI-001/ }).last();
+
+    await expect(baselineRow.getByRole("button", { name: "Always on" })).toBeDisabled();
+
+    // The sandbox further down also shows a DLP-001 card, so pick the row that owns a state switch.
+    const row = page
+      .locator("tr, div")
+      .filter({ hasText: /^DLP-001/ })
+      .filter({ has: page.getByRole("button", { name: /^(Enabled|Disabled|Partial)$/ }) })
+      .last();
+    const toggled = () => page.waitForResponse((response) => response.url().includes("/rules/DLP-001/toggle"));
 
     let pending = toggled();
     await row.getByRole("button", { name: "Enabled", exact: true }).click();

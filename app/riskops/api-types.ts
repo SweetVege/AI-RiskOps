@@ -116,7 +116,7 @@ export type PolicyRuleStateApi = {
     id: string;
     name: string;
   };
-  riskRule: Required<RiskRuleApi>;
+  riskRule: Required<RiskRuleApi> & { baseline?: boolean };
   operationalStat: {
     hits24h: number;
     reviewedFalsePositiveRate: number;
@@ -134,6 +134,8 @@ export type PolicyRuleRow = {
   reviewedFalsePositiveRate: number;
   policyRuleCount: number;
   enabledPolicyRuleCount: number;
+  // Enforced for every application regardless of its template, so it cannot be switched off.
+  baseline: boolean;
 };
 
 export type RiskEventListItemApi = {

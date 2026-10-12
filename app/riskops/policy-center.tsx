@@ -1,5 +1,5 @@
 import { AlertOctagon, Gauge, ListFilter, ShieldCheck, Sliders, SlidersHorizontal } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   type PolicyCenterSummaryApi,
   type PolicyRuleRow,
@@ -26,7 +26,7 @@ export function PolicyCenter({
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
 
-  const loadPolicyCenter = async () => {
+  const loadPolicyCenter = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -45,11 +45,11 @@ export function PolicyCenter({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentProfile]);
 
   useEffect(() => {
     void loadPolicyCenter();
-  }, [currentProfile]);
+  }, [loadPolicyCenter]);
 
   const templateRows = templates;
 

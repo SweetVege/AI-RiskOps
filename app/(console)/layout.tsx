@@ -1,10 +1,8 @@
 import { redirect } from "next/navigation";
 import { signOutAction } from "@/app/login/actions";
-import RiskOpsApp, { type AppSession } from "@/app/riskops/app";
-import { capabilityKeys, permissionsForScope } from "@/lib/api/permissions";
-import { resolveUserScope, type ApiProfile } from "@/lib/api/scope";
-import { getSessionUser } from "@/lib/auth";
-import { isDemoMode } from "@/lib/demo-mode";
+import { ConsoleShell, type AppSession } from "@/app/riskops/shell";
+import type { ApiProfile } from "@/lib/api/scope";
+import { getConsoleSession, hasAnyCapability } from "@/lib/console-session";
 
 export const dynamic = "force-dynamic";
 
@@ -14,39 +12,26 @@ const profileLabels: Record<ApiProfile, AppSession["profile"]> = {
   "platform-admin": "Platform Admin",
 };
 
-type PageProps = {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-};
+export default async function ConsoleLayout({ children }: { children: React.ReactNode }) {
+  const session = await getConsoleSession();
 
-export default async function Page({ searchParams }: PageProps) {
-  const query = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(await searchParams)) {
-    for (const item of Array.isArray(value) ? value : [value ?? ""]) {
-      query.append(key, item);
-    }
-  }
-
-  const initialSearch = query.toString();
-
-  if (isDemoMode()) {
-    return (
-      <RiskOpsApp
-        session={{ demoMode: true, profile: "Platform Admin", user: null, permissions: null, assignedApplicationCount: null, initialSearch }}
-      />
-    );
-  }
-
-  const user = await getSessionUser();
-
-  if (!user) {
+  if (session.mode === "anonymous") {
     redirect("/login");
   }
 
-  const scope = await resolveUserScope(user);
-  const permissions = await permissionsForScope(scope);
+  if (session.mode === "demo") {
+    return (
+      <ConsoleShell
+        session={{ demoMode: true, profile: "Platform Admin", user: null, permissions: null, assignedApplicationCount: null }}
+      >
+        {children}
+      </ConsoleShell>
+    );
+  }
 
-  if (!capabilityKeys.some((capability) => permissions[capability])) {
+  const { user, scope, permissions } = session;
+
+  if (!hasAnyCapability(permissions)) {
     return (
       <main className="grid min-h-screen place-items-center bg-panel px-6">
         <div className="w-full max-w-sm rounded-lg border border-line bg-white p-8">
@@ -69,15 +54,16 @@ export default async function Page({ searchParams }: PageProps) {
   }
 
   return (
-    <RiskOpsApp
+    <ConsoleShell
       session={{
         demoMode: false,
         profile: profileLabels[scope.profile],
         user,
         permissions,
         assignedApplicationCount: scope.isGlobal ? null : scope.applicationIds?.length ?? 0,
-        initialSearch,
       }}
-    />
+    >
+      {children}
+    </ConsoleShell>
   );
 }

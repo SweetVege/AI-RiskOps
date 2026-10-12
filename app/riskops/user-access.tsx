@@ -1,5 +1,5 @@
 import { Code2, Settings2, Shield, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   type UserAccessApplicationApi,
   type UserAccessAuditLogApi,
@@ -46,6 +46,7 @@ export function UserAccessAdmin({ currentProfile }: { currentProfile: UserProfil
   const [applications, setApplications] = useState<UserAccessApplicationApi[]>([]);
   const [accessAuditLogs, setAccessAuditLogs] = useState<UserAccessAuditLogApi[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [draftUserId, setDraftUserId] = useState<string | null>(null);
   const [draftPermissionSetId, setDraftPermissionSetId] = useState("");
   const [draftApplicationIds, setDraftApplicationIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -53,7 +54,7 @@ export function UserAccessAdmin({ currentProfile }: { currentProfile: UserProfil
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
-  async function loadUserAccess(signal?: AbortSignal) {
+  const loadUserAccess = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true);
     setError(null);
 
@@ -84,9 +85,9 @@ export function UserAccessAdmin({ currentProfile }: { currentProfile: UserProfil
       setApplications(payload.data.applications);
       setAccessAuditLogs(payload.data.accessAuditLogs ?? []);
 
-      const nextSelectedUser =
-        payload.data.users.find((user) => user.id === selectedUserId) ?? payload.data.users[0] ?? null;
-      setSelectedUserId(nextSelectedUser?.id ?? null);
+      const nextUsers = payload.data.users;
+      setSelectedUserId((current) =>
+        (nextUsers.find((user) => user.id === current) ?? nextUsers[0] ?? null)?.id ?? null);
     } catch (loadError) {
       if (loadError instanceof DOMException && loadError.name === "AbortError") return;
       setError(loadError instanceof Error ? loadError.message : "Unable to load user access configuration.");
@@ -101,14 +102,14 @@ export function UserAccessAdmin({ currentProfile }: { currentProfile: UserProfil
         setIsLoading(false);
       }
     }
-  }
+  }, [currentProfile]);
 
   useEffect(() => {
     const controller = new AbortController();
     void loadUserAccess(controller.signal);
 
     return () => controller.abort();
-  }, [currentProfile]);
+  }, [loadUserAccess]);
 
   const selectedUser = users.find((user) => user.id === selectedUserId) ?? users[0] ?? null;
   const selectedPermissionSet =
@@ -124,17 +125,16 @@ export function UserAccessAdmin({ currentProfile }: { currentProfile: UserProfil
           selectedUser.assignedApplications.map((application) => application.id).sort().join(",")),
   );
 
-  useEffect(() => {
-    if (!selectedUser) {
-      setDraftPermissionSetId("");
-      setDraftApplicationIds([]);
-      return;
-    }
+  // Reset the draft when a different user is selected, but not when the same user is reloaded after a save.
+  if ((selectedUser?.id ?? null) !== draftUserId) {
+    setDraftUserId(selectedUser?.id ?? null);
+    setDraftPermissionSetId(selectedUser?.permissionSet?.id ?? "");
+    setDraftApplicationIds(selectedUser?.assignedApplications.map((application) => application.id) ?? []);
 
-    setDraftPermissionSetId(selectedUser.permissionSet?.id ?? "");
-    setDraftApplicationIds(selectedUser.assignedApplications.map((application) => application.id));
-    setSaveMessage(null);
-  }, [selectedUser?.id]);
+    if (selectedUser) {
+      setSaveMessage(null);
+    }
+  }
 
   function toggleDraftApplication(applicationId: string) {
     setDraftApplicationIds((current) =>

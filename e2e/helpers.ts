@@ -39,5 +39,5 @@ export function sidebar(page: Page) {
 }
 
 export async function openPage(page: Page, label: string) {
-  await sidebar(page).getByRole("button", { name: label }).click();
+  await sidebar(page).getByRole("link", { name: label }).click();
 }

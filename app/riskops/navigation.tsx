@@ -1,5 +1,6 @@
 import { type NavLabel } from "@/app/riskops/config";
 
+// Slugs used by the old ?page= links, kept so existing bookmarks redirect to the new routes.
 export const navQueryMap: Record<string, NavLabel> = {
   overview: "Overview",
   analytics: "Risk Analytics",
@@ -11,27 +12,27 @@ export const navQueryMap: Record<string, NavLabel> = {
   access: "User Access",
 };
 
-export const navSlugMap: Record<NavLabel, string> = {
-  Overview: "overview",
-  "Risk Analytics": "analytics",
-  "Risk Events": "risk-events",
-  "Call Logs": "call-logs",
-  Applications: "applications",
-  "Policy Center": "policy",
-  "Application Setup": "setup",
-  "User Access": "access",
+export const navRoutes: Record<NavLabel, string> = {
+  Overview: "/",
+  "Risk Analytics": "/analytics",
+  "Risk Events": "/risk-events",
+  "Call Logs": "/call-logs",
+  Applications: "/applications",
+  "Policy Center": "/admin/policy",
+  "Application Setup": "/admin/setup",
+  "User Access": "/admin/access",
 };
 
-// During server rendering there is no window, so callers that render from the URL pass the request's
-// query string to keep the server markup identical to the first client render.
-export function readCurrentSearchParams(serverSearch = "") {
-  if (typeof window === "undefined") return new URLSearchParams(serverSearch);
-  return new URLSearchParams(window.location.search);
+export function navForPath(pathname: string): NavLabel {
+  const match = (Object.entries(navRoutes) as Array<[NavLabel, string]>)
+    .find(([, route]) => route !== "/" && (pathname === route || pathname.startsWith(`${route}/`)));
+
+  return match?.[0] ?? "Overview";
 }
 
-export function readInitialNav(serverSearch = ""): NavLabel {
-  const page = readCurrentSearchParams(serverSearch).get("page");
-  return page ? navQueryMap[page] ?? "Overview" : "Overview";
+export function readCurrentSearchParams() {
+  if (typeof window === "undefined") return new URLSearchParams();
+  return new URLSearchParams(window.location.search);
 }
 
 export function replaceUrlParams(nextParams: URLSearchParams) {
@@ -42,14 +43,8 @@ export function replaceUrlParams(nextParams: URLSearchParams) {
   window.history.replaceState(null, "", nextUrl);
 }
 
-export function updateUrlPage(page: NavLabel) {
-  const params = readCurrentSearchParams();
-  params.set("page", navSlugMap[page]);
-  replaceUrlParams(params);
-}
-
-export function readInitialRiskEventFilters(serverSearch = "") {
-  const params = readCurrentSearchParams(serverSearch);
+export function readInitialRiskEventFilters(search: string) {
+  const params = new URLSearchParams(search);
 
   return {
     q: params.get("q") ?? "",

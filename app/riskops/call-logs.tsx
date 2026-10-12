@@ -1,5 +1,6 @@
 import { AlertOctagon, ClipboardList, Gauge, ListFilter, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
+import { apiRequest } from "@/app/riskops/api";
 import { type CallLogDetailApi, type CallLogListItemApi, type PaginationApi } from "@/app/riskops/api-types";
 import { CallLogDetail, CallLogRow, StatCard } from "@/app/riskops/components";
 import { type UserProfile } from "@/app/riskops/config";
@@ -45,15 +46,14 @@ export function CallLogsView({
           page_number: `${pageNumber}`,
           page_size: "50",
         });
-        const response = await fetch(`/api/call-logs?${params.toString()}`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error("Unable to load call logs.");
-
-        const payload = (await response.json()) as {
+        const payload = await apiRequest<{
           data: CallLogListItemApi[];
           pagination?: PaginationApi;
-        };
+        }>("/api/call-logs", {
+          query: params,
+          signal: controller.signal,
+          errorMessage: "Unable to load call logs.",
+        });
         const nextLogs = payload.data.map(mapCallLogListItem);
         setLogs(nextLogs);
         setPagination(payload.pagination ?? null);
@@ -90,13 +90,11 @@ export function CallLogsView({
       setDetailError(null);
 
       try {
-        const profile = profileQueryValue(currentProfile);
-        const response = await fetch(`/api/call-logs/${selectedLogId}?profile=${profile}`, {
+        const payload = await apiRequest<{ data: CallLogDetailApi }>(`/api/call-logs/${selectedLogId}`, {
+          profile: currentProfile,
           signal: controller.signal,
+          errorMessage: "Unable to load call detail.",
         });
-        if (!response.ok) throw new Error("Unable to load call detail.");
-
-        const payload = (await response.json()) as { data: CallLogDetailApi };
         setDetailLog(mapCallLogDetail(payload.data));
         setLinkedEvent(
           payload.data.linkedRiskEvent

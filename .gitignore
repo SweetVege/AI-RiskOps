@@ -33,3 +33,7 @@ pnpm-debug.log*
 output/
 
 *.tsbuildinfo
+
+# Playwright
+/test-results/
+/playwright-report/

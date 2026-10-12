@@ -16,6 +16,7 @@ import {
   formatAnalyticsPercent,
   mapAnalyticsDriver,
 } from "@/app/riskops/analytics-shared";
+import { apiRequest } from "@/app/riskops/api";
 import { type ApplicationListItemApi } from "@/app/riskops/api-types";
 import { type ConnectedApp, type UserProfile } from "@/app/riskops/config";
 import { mapApplicationItem, profileQueryValue } from "@/app/riskops/mappers";
@@ -51,16 +52,11 @@ export function RiskAnalytics({
       setError(null);
 
       try {
-        const profile = profileQueryValue(currentProfile);
-        const appsResponse = await fetch(`/api/applications?profile=${profile}`, {
+        const appsPayload = await apiRequest<{ data: ApplicationListItemApi[] }>("/api/applications", {
+          profile: currentProfile,
           signal: controller.signal,
+          errorMessage: "Unable to load analytics context.",
         });
-
-        if (!appsResponse.ok) {
-          throw new Error("Unable to load analytics context.");
-        }
-
-        const appsPayload = await appsResponse.json() as { data: ApplicationListItemApi[] };
         setApps(appsPayload.data.map(mapApplicationItem));
       } catch (requestError) {
         if ((requestError as Error).name !== "AbortError") {
@@ -98,18 +94,14 @@ export function RiskAnalytics({
       setError(null);
 
       try {
-        const [summaryResponse, driversResponse] = await Promise.all([
-          fetch(`/api/analytics/summary?${analyticsQuery}`, { signal: controller.signal }),
-          fetch(`/api/analytics/drivers?${analyticsQuery}`, { signal: controller.signal }),
-        ]);
-
-        if (!summaryResponse.ok || !driversResponse.ok) {
-          throw new Error("Unable to load backend analytics.");
-        }
-
+        const request = <T,>(path: string) => apiRequest<{ data: T }>(path, {
+          query: analyticsQuery,
+          signal: controller.signal,
+          errorMessage: "Unable to load backend analytics.",
+        });
         const [summaryPayload, driversPayload] = await Promise.all([
-          summaryResponse.json() as Promise<{ data: AnalyticsSummaryApi }>,
-          driversResponse.json() as Promise<{ data: AnalyticsDriversApi }>,
+          request<AnalyticsSummaryApi>("/api/analytics/summary"),
+          request<AnalyticsDriversApi>("/api/analytics/drivers"),
         ]);
 
         setAnalyticsSummaryData(summaryPayload.data);
@@ -183,15 +175,11 @@ export function RiskAnalytics({
       }
 
       try {
-        const response = await fetch(`/api/analytics/applications/${focusedApplication.id}?${applicationAnalyticsQuery}`, {
+        const payload = await apiRequest<{ data: ApplicationAnalyticsApi }>(`/api/analytics/applications/${focusedApplication.id}`, {
+          query: applicationAnalyticsQuery,
           signal: controller.signal,
+          errorMessage: "Unable to load application analytics.",
         });
-
-        if (!response.ok) {
-          throw new Error("Unable to load application analytics.");
-        }
-
-        const payload = await response.json() as { data: ApplicationAnalyticsApi };
         setApplicationAnalyticsData(payload.data);
       } catch (requestError) {
         if ((requestError as Error).name !== "AbortError") {
@@ -210,15 +198,11 @@ export function RiskAnalytics({
 
     async function loadDrilldownAnalytics() {
       try {
-        const response = await fetch(`/api/analytics/drilldown?${drilldownAnalyticsQuery}`, {
+        const payload = await apiRequest<{ data: AnalyticsDrilldownApi }>("/api/analytics/drilldown", {
+          query: drilldownAnalyticsQuery,
           signal: controller.signal,
+          errorMessage: "Unable to load drill-down analytics.",
         });
-
-        if (!response.ok) {
-          throw new Error("Unable to load drill-down analytics.");
-        }
-
-        const payload = await response.json() as { data: AnalyticsDrilldownApi };
         setDrilldownAnalyticsData(payload.data);
       } catch (requestError) {
         if ((requestError as Error).name !== "AbortError") {

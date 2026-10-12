@@ -1,6 +1,8 @@
+import { authorizeRequest } from "@/lib/api/authorize";
 import { ingestionContract } from "@/lib/api/ingestion-contract";
 import { apiError, apiOk } from "@/lib/api/response";
-import { resolveRequestScope, scopeResponse } from "@/lib/api/scope";
+import { scopeResponse, type RequestScope } from "@/lib/api/scope";
+import { isDemoMode } from "@/lib/demo-mode";
 import {
   auditRejectedRequest,
   checkRateLimit,
@@ -19,14 +21,30 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const startedAt = Date.now();
-  const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
-  const raw = await request.json().catch(() => null) as unknown;
+
+  if (isDemoMode()) {
+    return apiError(403, "FORBIDDEN", "Demo mode is read-only.", { demoMode: true });
+  }
+
   const credentialAuth = await resolveCredentialAuth(request.headers);
+  let scope: RequestScope | null = null;
+
+  // Without an application API key this is a signed-in admin replaying a call from the Policy Center sandbox.
+  if (!credentialAuth) {
+    const access = await authorizeRequest(request, "canManagePolicyCenter");
+
+    if (!access.ok) {
+      return access.response;
+    }
+
+    scope = access.scope;
+  }
+
+  const raw = await request.json().catch(() => null) as unknown;
   const context: IngestionContext = {
     headers: request.headers,
     scope,
-    requestProfile: scope.profile,
+    requestProfile: scope?.profile ?? "application-credential",
     credential: credentialAuth && "credential" in credentialAuth ? credentialAuth.credential : null,
     startedAt,
   };
@@ -50,5 +68,5 @@ export async function POST(request: Request) {
     return apiError(failure.status, failure.code, failure.message, failure.details, failure.headers);
   }
 
-  return apiOk({ scope: scopeResponse(scope), data: outcome.data }, outcome.status);
+  return apiOk({ ...(scope ? { scope: scopeResponse(scope) } : {}), data: outcome.data }, outcome.status);
 }

@@ -1,3 +1,4 @@
+import { authorizeRequest } from "@/lib/api/authorize";
 import { NextResponse } from "next/server";
 import {
   analyticsDrivers,
@@ -8,13 +9,19 @@ import {
 } from "@/lib/api/analytics";
 import { capabilityErrorMessage, hasCapability } from "@/lib/api/permissions";
 import { apiError, apiOk } from "@/lib/api/response";
-import { resolveRequestScope, scopeResponse } from "@/lib/api/scope";
+import { scopeResponse } from "@/lib/api/scope";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request, "canViewRiskAnalytics");
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
 
   if (!(await hasCapability(scope, "canExportAnalytics"))) {
     return apiError(403, "FORBIDDEN", capabilityErrorMessage("canExportAnalytics"));

@@ -22,7 +22,7 @@ It gives AI governance, security, risk, compliance, and internal AI application 
 | Demo data | 5,000+ seeded model calls, 620+ risk events, and 5,000+ ingestion audit records |
 | Backend | Scoped APIs, analytics aggregation, model-call ingestion, credential validation, and permission simulation |
 | Deployment | Next.js + Prisma + Neon Postgres + GitHub Actions + Vercel |
-| Demo mode | User Profile switching simulates access scope; it is not production authentication |
+| Access | GitHub sign-in with capability-based permission sets, or a read-only demo mode |
 
 ## Product Preview
 
@@ -188,6 +188,8 @@ pnpm run typecheck
 pnpm test
 ```
 
+`pnpm run db:dev` starts an in-memory Postgres on port 54331 with all migrations applied, for local development without installing Postgres. Point `DATABASE_URL` at the printed URL and run `pnpm run db:seed`.
+
 `pnpm test` runs Vitest against an in-process PGlite Postgres built from `prisma/migrations`, so it needs no database or `.env`.
 
 Schema changes go through `prisma/migrations`. A database that was created earlier with `db:push` must be baselined once before `db:migrate`:
@@ -248,7 +250,7 @@ Current online status:
 | Backend writes | Model-call ingestion, risk event review updates, application setup, credential management, and user access updates |
 | Real ingestion path | `POST /api/ingest/model-call` with application API keys |
 | Ingestion validation | Verified with credential-authenticated smoke tests and ingestion audit records |
-| Human access | Demo User Profile switching, not production authentication |
+| Human access | GitHub sign-in with permission sets; optional read-only demo mode |
 
 Ready for portfolio and product demo use:
 
@@ -260,7 +262,6 @@ Ready for portfolio and product demo use:
 
 Required before real sensitive production data:
 
-- Replace demo User Profile switching with real authentication, or keep the deployment explicitly marked as demo mode.
 - Add tenant and production authorization boundaries before multi-company or multi-tenant use.
 - Store application credentials only in source-system secret managers.
 - Decide raw-content retention, masking, and deletion policy for production model-call payloads.
@@ -295,26 +296,26 @@ See [API Contract](docs/api-contract.md) for details.
 
 ## Access Model
 
-The prototype includes three default user profiles:
+AI RiskOps runs in one of two modes.
 
-- Global User
-- App Owner
-- Platform Admin
+**Authenticated mode (default).** Users sign in with GitHub. Every API except application-credential ingestion requires a session, and each request is checked against the user's permission set:
 
-The current access model is capability-based and scope-aware:
+- The signed-in GitHub email is matched to a `User` row. A first-time user is created with no permission set and sees an "Access pending" page until a Platform Admin assigns one in Admin -> User Access.
+- Emails listed in `AUTH_ADMIN_EMAILS` become Platform Admin on first sign-in, so a new deployment has someone who can grant access.
+- App Owner users only see assigned applications and related data. Global User users see global data. Platform Admin users can manage Policy Center, Application Setup, credentials, and User Access.
+- The `profile` query parameter is ignored.
 
-- App Owner users only see assigned applications and related data.
-- Global User users can view global operational data.
-- Platform Admin users can access Admin capabilities such as Policy Center, Application Setup, credentials, and User Access.
+Setup:
 
-User Profile switching remains a demo abstraction until real authentication is selected.
+1. Create a GitHub OAuth app at <https://github.com/settings/developers> with callback URL `<origin>/api/auth/callback/github`.
+2. Set `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`, and `AUTH_ADMIN_EMAILS`.
+
+**Demo mode (`DEMO_MODE=true`).** No sign-in. The User Profile switcher simulates Global User, App Owner, and Platform Admin, and the whole API is read-only: every write, including credential-authenticated ingestion, returns `403`. Use this only for a public showcase with seeded data.
 
 ## Online Readiness Notes
 
 Before using AI RiskOps with sensitive or production data:
 
-- Replace demo profile switching with real session identity or explicitly keep it as demo mode.
-- Add production-grade authentication and authorization.
 - Rotate any database password or API token that was shared during setup.
 - Keep `DATABASE_URL` and application API keys in secret stores only.
 - Verify application credential ingestion in the deployed environment before connecting real systems.

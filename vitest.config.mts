@@ -11,6 +11,7 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts"],
     globalSetup: ["tests/global-setup.ts"],
+    setupFiles: ["tests/setup.ts"],
     fileParallelism: false,
     env: {
       // Port must match tests/test-database.ts.

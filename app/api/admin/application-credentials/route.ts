@@ -1,3 +1,4 @@
+import { authorizeRequest } from "@/lib/api/authorize";
 import {
   credentialId,
   formatCredential,
@@ -6,7 +7,7 @@ import {
 } from "@/lib/api/application-credentials";
 import { capabilityErrorMessage, hasCapability } from "@/lib/api/permissions";
 import { apiCreated, apiError, apiOk } from "@/lib/api/response";
-import { resolveRequestScope, scopeResponse } from "@/lib/api/scope";
+import { scopeResponse } from "@/lib/api/scope";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +24,13 @@ async function readJsonBody(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request);
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
 
   if (!(await hasCapability(scope, "canManageCredentials"))) {
     return apiError(403, "FORBIDDEN", capabilityErrorMessage("canManageCredentials"));
@@ -98,8 +104,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request);
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
 
   if (!(await hasCapability(scope, "canManageCredentials"))) {
     return apiError(403, "FORBIDDEN", capabilityErrorMessage("canManageCredentials"));

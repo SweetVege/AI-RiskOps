@@ -1,7 +1,8 @@
+import { authorizeRequest } from "@/lib/api/authorize";
 import { formatPolicyRule } from "@/lib/api/policy-center";
 import { capabilityErrorMessage, hasCapability } from "@/lib/api/permissions";
 import { apiError, apiOk } from "@/lib/api/response";
-import { resolveRequestScope, scopeResponse } from "@/lib/api/scope";
+import { scopeResponse } from "@/lib/api/scope";
 import { baselineRuleIds, isBaselineRule } from "@/lib/policy/effective-policy";
 import { prisma } from "@/lib/prisma";
 
@@ -19,8 +20,13 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request);
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
 
   if (!(await hasCapability(scope, "canManagePolicyCenter"))) {
     return apiError(403, "FORBIDDEN", capabilityErrorMessage("canManagePolicyCenter"));

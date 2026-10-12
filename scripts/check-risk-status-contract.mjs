@@ -31,7 +31,7 @@ function assertEveryKnown(sourceName, values, knownValues) {
 const riskData = read("lib/risk-data.ts");
 const riskEventRoute = read("app/api/risk-events/[id]/route.ts");
 const seed = read("prisma/seed.mjs");
-const page = read("app/page.tsx");
+const page = read("app/riskops-app.tsx");
 
 const reviewStatusUnion = riskData.match(/export type ReviewStatus =([\s\S]*?);/);
 if (!reviewStatusUnion) {

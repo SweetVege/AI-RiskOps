@@ -1,4 +1,5 @@
 import { apiError, apiOk } from "@/lib/api/response";
+import { isDemoMode } from "@/lib/demo-mode";
 import { batchSchema, maxBatchSize } from "@/lib/ingestion/schema";
 import {
   auditRejectedRequest,
@@ -13,6 +14,11 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const startedAt = Date.now();
+
+  if (isDemoMode()) {
+    return apiError(403, "FORBIDDEN", "Demo mode is read-only.", { demoMode: true });
+  }
+
   const raw = await request.json().catch(() => null) as unknown;
   const credentialAuth = await resolveCredentialAuth(request.headers);
   const context: IngestionContext = {

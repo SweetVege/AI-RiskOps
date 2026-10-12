@@ -1,3 +1,4 @@
+import { capabilityKeys } from "@/lib/api/permissions";
 import { generateApplicationCredentialSecret } from "@/lib/api/application-credentials";
 import { prisma } from "@/lib/prisma";
 import { riskRules } from "@/lib/risk-data";
@@ -8,6 +9,22 @@ export const fixtureIds = {
   appB: "app-test-b",
   ownerUser: "user-demo-owner",
 };
+
+export const fixtureUsers = {
+  admin: "admin@example.test",
+  global: "global@example.test",
+  owner: "owner@example.test",
+};
+
+const viewCapabilities = capabilityKeys.filter((capability) =>
+  ["canViewOverview", "canViewRiskAnalytics", "canViewRiskEvents", "canViewCallLogs", "canViewApplications"].includes(capability),
+);
+
+const permissionSets = [
+  { id: "perm-platform-admin", name: "Platform Admin", dataScope: "global", capabilities: [...capabilityKeys] },
+  { id: "perm-global-user", name: "Global User", dataScope: "global", capabilities: [...viewCapabilities, "canUpdateRiskEventReview"] },
+  { id: "perm-app-owner", name: "App Owner", dataScope: "assigned_applications", capabilities: viewCapabilities },
+];
 
 export async function resetDatabase() {
   await prisma.$executeRawUnsafe(`
@@ -57,15 +74,38 @@ export async function seedFixtures() {
     });
   }
 
-  await prisma.user.create({
-    data: {
-      id: fixtureIds.ownerUser,
-      email: "owner@example.test",
-      name: "Test Owner",
-      applicationAccess: {
-        create: { id: "access-owner-a", applicationId: fixtureIds.appA, permission: "viewer" },
+  for (const set of permissionSets) {
+    await prisma.permissionSet.create({
+      data: {
+        id: set.id,
+        name: set.name,
+        description: set.name,
+        dataScope: set.dataScope,
+        capabilities: {
+          create: set.capabilities.map((capability) => ({ id: `${set.id}-${capability}`, capability })),
+        },
       },
-    },
+    });
+  }
+
+  // The owner keeps the demo user ID so demo-mode profile switching resolves to the same assignments.
+  for (const [id, email, permissionSetId] of [
+    ["user-test-admin", fixtureUsers.admin, "perm-platform-admin"],
+    ["user-test-global", fixtureUsers.global, "perm-global-user"],
+    [fixtureIds.ownerUser, fixtureUsers.owner, "perm-app-owner"],
+  ]) {
+    await prisma.user.create({
+      data: {
+        id,
+        email,
+        name: email,
+        permissionSets: { create: { id: `${id}-${permissionSetId}`, permissionSetId } },
+      },
+    });
+  }
+
+  await prisma.userApplicationAccess.create({
+    data: { id: "access-owner-a", userId: fixtureIds.ownerUser, applicationId: fixtureIds.appA, permission: "viewer" },
   });
 }
 

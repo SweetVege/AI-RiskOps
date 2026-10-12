@@ -81,16 +81,23 @@ Current error codes:
 
 ## 4. Scope And Permission Model
 
-### 4.1 Query Parameters
+### 4.1 Identity
 
-Most read APIs accept:
+Authenticated mode (default):
+
+- Every API except application-credential ingestion requires a signed-in session. Without one the API returns `401 UNAUTHORIZED`.
+- Identity and permissions come from the signed-in user's permission set. The `profile` and `userId` query parameters are ignored.
+- Read APIs require the matching view capability (`canViewOverview`, `canViewRiskAnalytics`, `canViewRiskEvents`, `canViewCallLogs`, `canViewApplications`) and return `403 FORBIDDEN` without it.
+- A signed-in user with no permission set has no capabilities.
+
+Demo mode (`DEMO_MODE=true`):
 
 | Parameter | Values | Default | Purpose |
 |---|---|---|---|
 | `profile` | `platform-admin`, `global-user`, `app-owner` | `platform-admin` | Simulated active user profile |
-| `userId` | Seeded user ID | Derived from `profile` | Optional user override for prototype testing |
 
-Profile aliases with spaces are accepted, such as `platform admin`.
+- No session is required. Profile aliases with spaces are accepted, such as `platform admin`.
+- Every non-GET request returns `403 FORBIDDEN` with `details.demoMode: true`.
 
 ### 4.2 Scope Response
 
@@ -138,14 +145,7 @@ Assigned application profile response:
 
 ### `GET /api/session`
 
-Returns active simulated profile, user ID, and database-backed capability flags.
-
-Query:
-
-| Parameter | Required | Notes |
-|---|---|---|
-| `profile` | No | Defaults to `platform-admin` |
-| `userId` | No | Optional override |
+Returns `demoMode`, the signed-in `user` (`null` in demo mode), the resolved profile, user ID, and database-backed capability flags. In demo mode the `profile` query parameter selects the simulated profile.
 
 Response data:
 
@@ -672,7 +672,9 @@ Current auth modes:
 | Mode | How it works |
 |---|---|
 | Application credential | `Authorization: Bearer <application_api_key>` |
-| Profile scope | `profile` query parameter for prototype simulation |
+| Signed-in admin | Session of a user with `canManagePolicyCenter`, used by the Policy Center sandbox |
+
+In demo mode ingestion is disabled and returns `403`.
 
 Supported headers:
 

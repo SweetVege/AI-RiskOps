@@ -1,13 +1,20 @@
+import { authorizeRequest } from "@/lib/api/authorize";
 import { apiOk } from "@/lib/api/response";
 import { paginationFromSearchParams, paginationResponse } from "@/lib/api/pagination";
-import { resolveRequestScope, scopedRiskEventWhere, scopeResponse } from "@/lib/api/scope";
+import { scopedRiskEventWhere, scopeResponse } from "@/lib/api/scope";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const scope = await resolveRequestScope(searchParams);
+  const access = await authorizeRequest(request, "canViewRiskEvents");
+
+  if (!access.ok) {
+    return access.response;
+  }
+
+  const { scope } = access;
   const level = searchParams.get("level");
   const action = searchParams.get("action");
   const reviewStatus = searchParams.get("review_status");

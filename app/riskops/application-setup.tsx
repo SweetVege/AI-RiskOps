@@ -8,10 +8,11 @@ import {
   type IngestionAuditApi,
   type IngestionAuditSummaryApi,
 } from "@/app/riskops/api-types";
+import { apiRequest } from "@/app/riskops/api";
 import { ConnectionStatusPill } from "@/app/riskops/applications";
 import { StatCard } from "@/app/riskops/components";
 import { type UserProfile, integrationMethods, onboardingSteps } from "@/app/riskops/config";
-import { formatApiDateTime, formatApiTime, profileQueryValue } from "@/app/riskops/mappers";
+import { formatApiDateTime, formatApiTime } from "@/app/riskops/mappers";
 
 export const credentialStatusMeta: Record<ApplicationCredentialApi["status"], {
   label: string;
@@ -246,19 +247,14 @@ export function ApplicationSetup({ currentProfile }: { currentProfile: UserProfi
     setSetupError(null);
 
     try {
-      const profile = profileQueryValue(currentProfile);
-      const response = await fetch(`/api/admin/application-setup?profile=${profile}`, {
-        signal,
-      });
-
-      if (!response.ok) {
-        throw new Error("Unable to load application setup configuration.");
-      }
-
-      const payload = (await response.json()) as {
+      const payload = await apiRequest<{
         summary: ApplicationSetupSummaryApi;
         data: ApplicationSetupApi[];
-      };
+      }>("/api/admin/application-setup", {
+        profile: currentProfile,
+        signal,
+        errorMessage: "Unable to load application setup configuration.",
+      });
       setSetupSummary(payload.summary);
       setSetupApplications(payload.data);
     } catch (error) {
@@ -278,16 +274,11 @@ export function ApplicationSetup({ currentProfile }: { currentProfile: UserProfi
     setCredentialError(null);
 
     try {
-      const profile = profileQueryValue(currentProfile);
-      const response = await fetch(`/api/admin/application-credentials?profile=${profile}`, {
+      const payload = await apiRequest<{ data: ApplicationCredentialApi[] }>("/api/admin/application-credentials", {
+        profile: currentProfile,
         signal,
+        errorMessage: "Unable to load application credentials.",
       });
-
-      if (!response.ok) {
-        throw new Error("Unable to load application credentials.");
-      }
-
-      const payload = (await response.json()) as { data: ApplicationCredentialApi[] };
       setCredentials(payload.data);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -305,19 +296,14 @@ export function ApplicationSetup({ currentProfile }: { currentProfile: UserProfi
     setAuditError(null);
 
     try {
-      const profile = profileQueryValue(currentProfile);
-      const response = await fetch(`/api/admin/ingestion-audit?profile=${profile}`, {
-        signal,
-      });
-
-      if (!response.ok) {
-        throw new Error("Unable to load ingestion audit records.");
-      }
-
-      const payload = (await response.json()) as {
+      const payload = await apiRequest<{
         summary: IngestionAuditSummaryApi;
         data: IngestionAuditApi[];
-      };
+      }>("/api/admin/ingestion-audit", {
+        profile: currentProfile,
+        signal,
+        errorMessage: "Unable to load ingestion audit records.",
+      });
       setIngestionAuditSummary(payload.summary);
       setIngestionAudits(payload.data);
     } catch (error) {
@@ -347,29 +333,19 @@ export function ApplicationSetup({ currentProfile }: { currentProfile: UserProfi
     setCredentialError(null);
 
     try {
-      const profile = profileQueryValue(currentProfile);
-      const endpoint =
+      const payload = await apiRequest<{ data?: ApplicationCredentialMutationApi }>(
         action === "generate"
-          ? `/api/admin/application-credentials?profile=${profile}`
-          : `/api/admin/application-credentials/${credential.id}/${action}?profile=${profile}`;
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: action === "generate"
-          ? JSON.stringify({
-              applicationId: credential.applicationId,
-              integrationSource: credential.integrationSource,
-            })
-          : undefined,
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        data?: ApplicationCredentialMutationApi;
-        error?: string;
-      } | null;
-
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Unable to update application credential.");
-      }
+          ? "/api/admin/application-credentials"
+          : `/api/admin/application-credentials/${credential.id}/${action}`,
+        {
+          profile: currentProfile,
+          method: "POST",
+          body: action === "generate"
+            ? { applicationId: credential.applicationId, integrationSource: credential.integrationSource }
+            : undefined,
+          errorMessage: "Unable to update application credential.",
+        },
+      );
 
       if (payload?.data?.secret) {
         setRevealedCredential({
@@ -395,21 +371,16 @@ export function ApplicationSetup({ currentProfile }: { currentProfile: UserProfi
     setSetupError(null);
 
     try {
-      const profile = profileQueryValue(currentProfile);
-      const response = await fetch(`/api/admin/application-setup?profile=${profile}`, {
+      await apiRequest("/api/admin/application-setup", {
+        profile: currentProfile,
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           name: newApplicationName,
           ownerTeam: newApplicationOwner,
           integrationMethod: newApplicationIntegration,
-        }),
+        },
+        errorMessage: "Unable to register application.",
       });
-      const payload = await response.json().catch(() => null) as { error?: string } | null;
-
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Unable to register application.");
-      }
 
       setNewApplicationName("");
       setNewApplicationOwner("");

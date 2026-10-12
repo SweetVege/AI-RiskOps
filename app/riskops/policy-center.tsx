@@ -6,9 +6,9 @@ import {
   type PolicyRuleStateApi,
   type PolicyTemplateApi,
 } from "@/app/riskops/api-types";
+import { apiRequest } from "@/app/riskops/api";
 import { ActionPill, DetectionSandbox, StatCard } from "@/app/riskops/components";
 import { type UserProfile, actionMatrix } from "@/app/riskops/config";
-import { profileQueryValue } from "@/app/riskops/mappers";
 import { type RiskEvent } from "@/lib/risk-data";
 import { type RiskEvaluation, type SandboxInput } from "@/lib/risk-engine";
 
@@ -30,14 +30,13 @@ export function PolicyCenter({
     setIsLoading(true);
     setError(null);
     try {
-      const profile = encodeURIComponent(profileQueryValue(currentProfile));
-      const response = await fetch(`/api/admin/policy-center?profile=${profile}`, {
-        cache: "no-store",
+      const payload = await apiRequest<{
+        summary: PolicyCenterSummaryApi;
+        data: { templates: PolicyTemplateApi[]; policyRules: PolicyRuleStateApi[] };
+      }>("/api/admin/policy-center", {
+        profile: currentProfile,
+        errorMessage: "Unable to load Policy Center data.",
       });
-      const payload = await response.json();
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.error ?? "Unable to load Policy Center data.");
-      }
       setSummary(payload.summary);
       setTemplates(payload.data.templates);
       setPolicyRules(payload.data.policyRules);
@@ -97,19 +96,12 @@ export function PolicyCenter({
     setPendingAction(`template-${templateId}`);
     setError(null);
     try {
-      const profile = encodeURIComponent(profileQueryValue(currentProfile));
-      const response = await fetch(
-        `/api/admin/policy-center/templates/${encodeURIComponent(templateId)}/toggle?profile=${profile}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled }),
-        },
-      );
-      const payload = await response.json();
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.error ?? "Unable to update policy template.");
-      }
+      await apiRequest(`/api/admin/policy-center/templates/${encodeURIComponent(templateId)}/toggle`, {
+        profile: currentProfile,
+        method: "POST",
+        body: { enabled },
+        errorMessage: "Unable to update policy template.",
+      });
       await loadPolicyCenter();
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : "Unable to update policy template.");
@@ -122,19 +114,12 @@ export function PolicyCenter({
     setPendingAction(`rule-${ruleId}`);
     setError(null);
     try {
-      const profile = encodeURIComponent(profileQueryValue(currentProfile));
-      const response = await fetch(
-        `/api/admin/policy-center/rules/${encodeURIComponent(ruleId)}/toggle?profile=${profile}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled }),
-        },
-      );
-      const payload = await response.json();
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.error ?? "Unable to update risk rule.");
-      }
+      await apiRequest(`/api/admin/policy-center/rules/${encodeURIComponent(ruleId)}/toggle`, {
+        profile: currentProfile,
+        method: "POST",
+        body: { enabled },
+        errorMessage: "Unable to update risk rule.",
+      });
       await loadPolicyCenter();
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : "Unable to update risk rule.");

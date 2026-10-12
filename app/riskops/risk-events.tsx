@@ -1,5 +1,6 @@
 import { Activity, AlertOctagon, Gauge, Search, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
+import { apiRequest } from "@/app/riskops/api";
 import { type RiskEventDrillThroughFilters, type RiskEventSavedView } from "@/app/riskops/analytics-shared";
 import {
   type PaginationApi,
@@ -185,16 +186,14 @@ export function RiskEventsWorkbench({
       setListError(null);
 
       try {
-        const response = await fetch(`/api/risk-events?${params.toString()}`, { signal: controller.signal });
-
-        if (!response.ok) {
-          throw new Error("Unable to load risk events");
-        }
-
-        const payload = (await response.json()) as {
+        const payload = await apiRequest<{
           data: RiskEventListItemApi[];
           pagination?: PaginationApi;
-        };
+        }>("/api/risk-events", {
+          query: params,
+          signal: controller.signal,
+          errorMessage: "Unable to load risk events",
+        });
         const mappedEvents = payload.data.map(mapRiskEventListItem);
         setEvents(mappedEvents);
         setPagination(payload.pagination ?? null);
@@ -246,16 +245,11 @@ export function RiskEventsWorkbench({
       setDetailError(null);
 
       try {
-        const response = await fetch(
-          `/api/risk-events/${selectedId}?profile=${profileQueryValue(currentProfile)}`,
-          { signal: controller.signal },
-        );
-
-        if (!response.ok) {
-          throw new Error("Unable to load risk event detail");
-        }
-
-        const payload = (await response.json()) as { data: RiskEventDetailApi };
+        const payload = await apiRequest<{ data: RiskEventDetailApi }>(`/api/risk-events/${selectedId}`, {
+          profile: currentProfile,
+          signal: controller.signal,
+          errorMessage: "Unable to load risk event detail",
+        });
         setDetailEvent(mapRiskEventDetail(payload.data));
       } catch (requestError) {
         if ((requestError as Error).name !== "AbortError") {
@@ -322,21 +316,18 @@ export function RiskEventsWorkbench({
     setDetailError(null);
 
     try {
-      const response = await fetch(
-        `/api/risk-events/${visibleSelectedEvent.id}?profile=${profileQueryValue(currentProfile)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(input),
-        },
-      );
-      const payload = await response.json().catch(() => null) as {
+      const payload = await apiRequest<{
         data?: RiskEventDetailApi;
         error?: string;
-      } | null;
+      }>(`/api/risk-events/${visibleSelectedEvent.id}`, {
+        profile: currentProfile,
+        method: "PATCH",
+        body: input,
+        errorMessage: "Unable to update review metadata.",
+      });
 
-      if (!response.ok || !payload?.data) {
-        throw new Error(payload?.error ?? "Unable to update review metadata.");
+      if (!payload?.data) {
+        throw new Error("Unable to update review metadata.");
       }
 
       const updatedEvent = mapRiskEventDetail(payload.data);

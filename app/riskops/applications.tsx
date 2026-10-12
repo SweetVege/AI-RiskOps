@@ -6,13 +6,13 @@ import {
   driverBarsFromEvents,
   ruleDriversFromEvents,
 } from "@/app/riskops/analytics-shared";
+import { apiRequest } from "@/app/riskops/api";
 import { type ApplicationDetailApi, type ApplicationListItemApi } from "@/app/riskops/api-types";
 import { StatCard } from "@/app/riskops/components";
 import { type ConnectedApp, type UserProfile, riskLevelRank } from "@/app/riskops/config";
 import {
   levelFromScore,
   mapApplicationItem,
-  profileQueryValue,
   titleCaseStatus,
 } from "@/app/riskops/mappers";
 import { type RiskEvent, levelMeta, riskRules } from "@/lib/risk-data";
@@ -388,13 +388,11 @@ export function ApplicationsView({
       setListError(null);
 
       try {
-        const profile = profileQueryValue(currentProfile);
-        const response = await fetch(`/api/applications?profile=${profile}`, {
+        const payload = await apiRequest<{ data: ApplicationListItemApi[] }>("/api/applications", {
+          profile: currentProfile,
           signal: controller.signal,
+          errorMessage: "Unable to load applications.",
         });
-        if (!response.ok) throw new Error("Unable to load applications.");
-
-        const payload = (await response.json()) as { data: ApplicationListItemApi[] };
         const nextApps = payload.data.map(mapApplicationItem);
         setApps(nextApps);
 
@@ -428,13 +426,11 @@ export function ApplicationsView({
       setDetailError(null);
 
       try {
-        const profile = profileQueryValue(currentProfile);
-        const response = await fetch(`/api/applications/${selectedAppId}?profile=${profile}`, {
+        const payload = await apiRequest<{ data: ApplicationDetailApi }>(`/api/applications/${selectedAppId}`, {
+          profile: currentProfile,
           signal: controller.signal,
+          errorMessage: "Unable to load application detail.",
         });
-        if (!response.ok) throw new Error("Unable to load application detail.");
-
-        const payload = (await response.json()) as { data: ApplicationDetailApi };
         setDetailApp(mapApplicationItem(payload.data));
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;

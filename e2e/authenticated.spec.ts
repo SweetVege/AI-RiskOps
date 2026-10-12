@@ -47,6 +47,17 @@ test.describe("signed-in mode", () => {
     expect((await page.request.get(`${authUrl}/api/admin/policy-center?profile=platform-admin`)).status()).toBe(403);
   });
 
+  test("returns to the login page when the session expires mid-use", async ({ page, context }) => {
+    await signIn(context, users.admin);
+    await page.goto(authUrl);
+    await expect(page.getByRole("heading", { name: "Top Risky Applications" })).toBeVisible();
+
+    await context.clearCookies();
+    await openPage(page, "Risk Events");
+
+    await expect(page).toHaveURL(`${authUrl}/login`);
+  });
+
   test("drills from analytics into filtered risk events", async ({ page, context }) => {
     await signIn(context, users.admin);
     await page.goto(`${authUrl}/?page=analytics`);

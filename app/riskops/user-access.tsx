@@ -7,9 +7,10 @@ import {
   type UserAccessSummaryApi,
   type UserAccessUserApi,
 } from "@/app/riskops/api-types";
+import { apiRequest } from "@/app/riskops/api";
 import { FieldLabel, StatCard } from "@/app/riskops/components";
 import { type UserProfile } from "@/app/riskops/config";
-import { formatApiDateTime, profileQueryValue } from "@/app/riskops/mappers";
+import { formatApiDateTime } from "@/app/riskops/mappers";
 
 export function formatDataScopeLabel(value: string) {
   return value === "assigned_applications" ? "Assigned Applications" : "Global";
@@ -57,12 +58,7 @@ export function UserAccessAdmin({ currentProfile }: { currentProfile: UserProfil
     setError(null);
 
     try {
-      const profile = encodeURIComponent(profileQueryValue(currentProfile));
-      const response = await fetch(`/api/admin/user-access?profile=${profile}`, {
-        cache: "no-store",
-        signal,
-      });
-      const payload = await response.json().catch(() => null) as {
+      const payload = await apiRequest<{
         success?: boolean;
         error?: string;
         summary?: UserAccessSummaryApi;
@@ -72,10 +68,14 @@ export function UserAccessAdmin({ currentProfile }: { currentProfile: UserProfil
           applications: UserAccessApplicationApi[];
           accessAuditLogs?: UserAccessAuditLogApi[];
         };
-      } | null;
+      }>("/api/admin/user-access", {
+        profile: currentProfile,
+        signal,
+        errorMessage: "Unable to load user access configuration.",
+      });
 
-      if (!response.ok || !payload?.success || !payload.data) {
-        throw new Error(payload?.error ?? "Unable to load user access configuration.");
+      if (!payload.data) {
+        throw new Error("Unable to load user access configuration.");
       }
 
       setSummary(payload.summary ?? null);
@@ -152,24 +152,16 @@ export function UserAccessAdmin({ currentProfile }: { currentProfile: UserProfil
     setSaveMessage(null);
 
     try {
-      const profile = encodeURIComponent(profileQueryValue(currentProfile));
-      const response = await fetch(`/api/admin/user-access?profile=${profile}`, {
+      await apiRequest("/api/admin/user-access", {
+        profile: currentProfile,
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           userId: selectedUser.id,
           permissionSetId: selectedPermissionSet.id,
           applicationIds: requiresApplicationScope ? draftApplicationIds : [],
-        }),
+        },
+        errorMessage: "Unable to save user access configuration.",
       });
-      const payload = await response.json().catch(() => null) as {
-        success?: boolean;
-        error?: string;
-      } | null;
-
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error ?? "Unable to save user access configuration.");
-      }
 
       setSaveMessage("User access saved.");
       await loadUserAccess();

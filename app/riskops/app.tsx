@@ -3,6 +3,7 @@
 import { Bell, Settings2, Shield, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { signOutAction } from "@/app/login/actions";
+import { apiRequest } from "@/app/riskops/api";
 import { type RiskEventDrillThroughFilters } from "@/app/riskops/analytics-shared";
 import {
   type ModelCallIngestionApi,
@@ -26,7 +27,6 @@ import {
   userProfileIntents,
   userProfiles,
 } from "@/app/riskops/config";
-import { profileQueryValue } from "@/app/riskops/mappers";
 import {
   readCurrentSearchParams,
   readInitialNav,
@@ -106,37 +106,23 @@ export default function RiskOpsApp({ session }: { session: AppSession }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    const profile = encodeURIComponent(profileQueryValue(currentProfile));
 
     async function loadOverview() {
       setIsOverviewLoading(true);
       setOverviewError(null);
 
       try {
-        const [summaryResponse, categoriesResponse, topApplicationsResponse, severeEventsResponse] =
-          await Promise.all([
-            fetch(`/api/overview/summary?profile=${profile}`, { signal: controller.signal }),
-            fetch(`/api/overview/risk-categories?profile=${profile}`, { signal: controller.signal }),
-            fetch(`/api/overview/top-applications?profile=${profile}`, { signal: controller.signal }),
-            fetch(`/api/overview/severe-events?profile=${profile}`, { signal: controller.signal }),
-          ]);
-
-        if (
-          !summaryResponse.ok ||
-          !categoriesResponse.ok ||
-          !topApplicationsResponse.ok ||
-          !severeEventsResponse.ok
-        ) {
-          throw new Error("Unable to load overview data");
-        }
-
-        const [summaryPayload, categoriesPayload, topApplicationsPayload, severeEventsPayload] =
-          await Promise.all([
-            summaryResponse.json() as Promise<{ data: OverviewSummaryApi }>,
-            categoriesResponse.json() as Promise<{ data: OverviewCategoryApi[] }>,
-            topApplicationsResponse.json() as Promise<{ data: OverviewTopApplicationApi[] }>,
-            severeEventsResponse.json() as Promise<{ data: OverviewSevereEventApi[] }>,
-          ]);
+        const request = <T,>(path: string) => apiRequest<{ data: T }>(path, {
+          profile: currentProfile,
+          signal: controller.signal,
+          errorMessage: "Unable to load overview data",
+        });
+        const [summaryPayload, categoriesPayload, topApplicationsPayload, severeEventsPayload] = await Promise.all([
+          request<OverviewSummaryApi>("/api/overview/summary"),
+          request<OverviewCategoryApi[]>("/api/overview/risk-categories"),
+          request<OverviewTopApplicationApi[]>("/api/overview/top-applications"),
+          request<OverviewSevereEventApi[]>("/api/overview/severe-events"),
+        ]);
 
         setOverviewData({
           summary: summaryPayload.data,
@@ -162,15 +148,14 @@ export default function RiskOpsApp({ session }: { session: AppSession }) {
   }, [currentProfile, overviewRefreshKey]);
 
   const simulateIngestion = async (input: SandboxInput) => {
-    const profile = encodeURIComponent(profileQueryValue(currentProfile));
-    const response = await fetch(`/api/ingest/model-call?profile=${profile}`, {
+    const payload = await apiRequest<{ data: ModelCallIngestionApi }>("/api/ingest/model-call", {
+      profile: currentProfile,
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         "x-ai-riskops-source": "sdk",
         "x-ai-riskops-contract-version": modelCallIngestionContractVersion,
       },
-      body: JSON.stringify({
+      body: {
         contractVersion: modelCallIngestionContractVersion,
         ingestionSource: "sdk",
         application: {
@@ -200,15 +185,9 @@ export default function RiskOpsApp({ session }: { session: AppSession }) {
           toolCall: input.toolCall,
         },
         templateId: input.templateId,
-      }),
+      },
+      errorMessage: "Unable to ingest model call.",
     });
-
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(payload?.error ?? "Unable to ingest model call.");
-    }
-
-    const payload = (await response.json()) as { data: ModelCallIngestionApi };
     setSelectedLogId(payload.data.callLog.id);
 
     if (payload.data.riskEvent?.id) {

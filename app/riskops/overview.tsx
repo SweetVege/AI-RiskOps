@@ -7,9 +7,9 @@ import {
   type OverviewTopApplicationApi,
   type OverviewTrendBucketApi,
 } from "@/app/riskops/api-types";
+import { apiRequest } from "@/app/riskops/api";
 import { StatCard } from "@/app/riskops/components";
 import { type UserProfile } from "@/app/riskops/config";
-import { profileQueryValue } from "@/app/riskops/mappers";
 import { levelMeta } from "@/lib/risk-data";
 
 export type TrendPeriod = "Daily" | "Monthly" | "Quarterly";
@@ -48,16 +48,12 @@ export function RiskLevelTrendChart({ profile }: { profile: UserProfile }) {
       setError(null);
 
       try {
-        const response = await fetch(
-          `/api/overview/risk-level-trend?profile=${profileQueryValue(profile)}&period=${period.toLowerCase()}`,
-          { signal: controller.signal },
-        );
-
-        if (!response.ok) {
-          throw new Error("Unable to load risk trend");
-        }
-
-        const payload = (await response.json()) as { data: OverviewTrendBucketApi[] };
+        const payload = await apiRequest<{ data: OverviewTrendBucketApi[] }>("/api/overview/risk-level-trend", {
+          profile,
+          query: { period: period.toLowerCase() },
+          signal: controller.signal,
+          errorMessage: "Unable to load risk trend",
+        });
         setTrendData(payload.data);
       } catch (requestError) {
         if ((requestError as Error).name !== "AbortError") {

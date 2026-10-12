@@ -1,6 +1,7 @@
 import { ChevronRight, GitBranch, Play, RotateCcw, Shield } from "lucide-react";
-import { useEffect, useState } from "react";
-import { actionDescriptions, levelDescriptions } from "@/app/riskops/config";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { apiRequest } from "@/app/riskops/api";
+import { type UserProfile, actionDescriptions, levelDescriptions } from "@/app/riskops/config";
 import {
   type AiCallLog,
   type ReviewStatus,
@@ -11,7 +12,7 @@ import {
   riskRules,
   ruleIcons,
 } from "@/lib/risk-data";
-import { type RiskEvaluation, type SandboxInput, evaluateAiCall, sandboxTemplates } from "@/lib/risk-engine";
+import { type RiskEvaluation, type SandboxInput, sandboxTemplates } from "@/lib/risk-engine";
 
 export function StatCard({
   title,
@@ -578,9 +579,50 @@ export function TextAreaField({
   );
 }
 
-export function DetectionResult({ result }: { result: RiskEvaluation }) {
+export type PolicyEvaluationApi = {
+  evaluation: RiskEvaluation;
+  application: { id: string; name: string } | null;
+  policy: {
+    templateId: string | null;
+    templateName: string | null;
+    activeRuleIds: string[];
+  };
+};
+
+function evaluationPolicyLabel(response: PolicyEvaluationApi) {
+  if (!response.application) {
+    return "No registered application has this name, so the sample was scored against the full rule catalog.";
+  }
+
+  return response.policy.templateName
+    ? `Scored with ${response.policy.templateName} as bound to ${response.application.name}.`
+    : `${response.application.name} has no policy template, so the full rule catalog applies.`;
+}
+
+export function DetectionResult({
+  response,
+  isEvaluating,
+  error,
+}: {
+  response: PolicyEvaluationApi | null;
+  isEvaluating: boolean;
+  error: string | null;
+}) {
+  if (!response) {
+    return (
+      <aside className="rounded-lg border border-line bg-white p-4 shadow-soft">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Detection Result</p>
+        <p className={`mt-3 rounded-lg p-3 text-sm ${error ? "bg-rose-50 text-rose-700" : "bg-panel text-slate-600"}`}>
+          {error ?? "Evaluating sample..."}
+        </p>
+      </aside>
+    );
+  }
+
+  const result = response.evaluation;
+
   return (
-    <aside className="rounded-lg border border-line bg-white p-4 shadow-soft">
+    <aside className={`rounded-lg border border-line bg-white p-4 shadow-soft ${isEvaluating ? "opacity-60" : ""}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -595,6 +637,13 @@ export function DetectionResult({ result }: { result: RiskEvaluation }) {
           <p className="text-xs text-slate-500">Risk Score</p>
         </div>
       </div>
+
+      {error ? (
+        <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{error}</p>
+      ) : null}
+      <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+        {evaluationPolicyLabel(response)} {response.policy.activeRuleIds.length} rules active.
+      </p>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div className="rounded-lg bg-panel p-3">
@@ -639,7 +688,7 @@ export function DetectionResult({ result }: { result: RiskEvaluation }) {
             ))
           ) : (
             <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
-              No V0.2 risk rules matched.
+              No active rules matched.
             </p>
           )}
         </div>
@@ -663,14 +712,53 @@ export function DetectionResult({ result }: { result: RiskEvaluation }) {
 }
 
 export function DetectionSandbox({
+  currentProfile,
   onSimulateIngestion,
 }: {
-  onSimulateIngestion: (input: SandboxInput, result: RiskEvaluation) => Promise<void>;
+  currentProfile: UserProfile;
+  onSimulateIngestion: (input: SandboxInput) => Promise<void>;
 }) {
   const [input, setInput] = useState<SandboxInput>(sandboxTemplates[0].input);
-  const [result, setResult] = useState<RiskEvaluation>(() => evaluateAiCall(sandboxTemplates[0].input));
+  const [response, setResponse] = useState<PolicyEvaluationApi | null>(null);
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [evaluationError, setEvaluationError] = useState<string | null>(null);
   const [isIngesting, setIsIngesting] = useState(false);
   const [ingestionStatus, setIngestionStatus] = useState<string | null>(null);
+  const latestRequest = useRef(0);
+
+  // The server scores the sample with the policy bound to the named application, which is what
+  // ingestion would do. Only the newest request may update the panel.
+  const evaluate = useCallback(async (sample: SandboxInput) => {
+    const requestId = latestRequest.current + 1;
+    latestRequest.current = requestId;
+    setIsEvaluating(true);
+    setEvaluationError(null);
+
+    try {
+      const payload = await apiRequest<{ data: PolicyEvaluationApi }>("/api/admin/policy-center/evaluate", {
+        profile: currentProfile,
+        method: "POST",
+        body: sample,
+        errorMessage: "Unable to evaluate the sample.",
+      });
+
+      if (latestRequest.current === requestId) {
+        setResponse(payload.data);
+      }
+    } catch (error) {
+      if (latestRequest.current === requestId) {
+        setEvaluationError(error instanceof Error ? error.message : "Unable to evaluate the sample.");
+      }
+    } finally {
+      if (latestRequest.current === requestId) {
+        setIsEvaluating(false);
+      }
+    }
+  }, [currentProfile]);
+
+  useEffect(() => {
+    void evaluate(sandboxTemplates[0].input);
+  }, [evaluate]);
 
   const updateInput = <K extends keyof SandboxInput>(key: K, value: SandboxInput[K]) => {
     setInput((current) => ({ ...current, [key]: value }));
@@ -679,21 +767,19 @@ export function DetectionSandbox({
   const applyTemplate = (templateId: string) => {
     const template = sandboxTemplates.find((item) => item.id === templateId) ?? sandboxTemplates[0];
     setInput(template.input);
-    setResult(evaluateAiCall(template.input));
+    void evaluate(template.input);
   };
 
   const runDetection = () => {
-    setResult(evaluateAiCall(input));
+    void evaluate(input);
   };
 
   const simulateIngestion = async () => {
-    const latestResult = evaluateAiCall(input);
-    setResult(latestResult);
     setIsIngesting(true);
     setIngestionStatus(null);
 
     try {
-      await onSimulateIngestion(input, latestResult);
+      await onSimulateIngestion(input);
       setIngestionStatus("Ingested into backend. Open Call Logs, Risk Events, or Overview to inspect the updated data.");
     } catch (error) {
       setIngestionStatus(error instanceof Error ? error.message : "Unable to ingest model call.");
@@ -786,10 +872,11 @@ export function DetectionSandbox({
           <button
             type="button"
             onClick={runDetection}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-ink px-4 text-sm font-medium text-white hover:bg-slate-800"
+            disabled={isEvaluating}
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-ink px-4 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Play className="h-4 w-4" />
-            Run Detection
+            {isEvaluating ? "Evaluating..." : "Run Detection"}
           </button>
         </div>
         {ingestionStatus ? (
@@ -799,7 +886,7 @@ export function DetectionSandbox({
         ) : null}
       </section>
 
-      <DetectionResult result={result} />
+      <DetectionResult response={response} isEvaluating={isEvaluating} error={evaluationError} />
     </div>
   );
 }

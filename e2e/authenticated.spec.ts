@@ -114,6 +114,38 @@ test.describe("signed-in mode", () => {
     expect(payload.data.ingestion.policy.templateId).toBe("policy-customer-support");
   });
 
+  test("previews the sandbox sample with the application's own policy", async ({ page, context }) => {
+    const setRule = (enabled: boolean) =>
+      page.request.post(`${authUrl}/api/admin/policy-center/rules/DLP-001/toggle`, { data: { enabled } });
+
+    await signIn(context, users.admin);
+    await page.goto(`${authUrl}/admin/policy`);
+
+    const result = page.locator("aside").filter({ hasText: "Detection Result" });
+
+    // The default sample is a Customer Support Copilot call that leaks a phone number.
+    await expect(result.getByText("Scored with Customer Support Copilot Policy as bound to Customer Support Copilot.")).toBeVisible();
+    await expect(result.getByText(/DLP-001 · Personal Sensitive Information/)).toBeVisible();
+
+    try {
+      expect((await setRule(false)).status()).toBe(200);
+
+      const evaluated = page.waitForResponse((response) => response.url().includes("/api/admin/policy-center/evaluate"));
+
+      await page.getByRole("button", { name: "Run Detection" }).click();
+      expect((await evaluated).status()).toBe(200);
+      await expect(result.getByText("No active rules matched.")).toBeVisible();
+      await expect(result.getByText(/DLP-001 · Personal Sensitive Information/)).toHaveCount(0);
+    } finally {
+      expect((await setRule(true)).status()).toBe(200);
+    }
+
+    // A sample for an application that is not registered falls back to the whole catalog.
+    await page.getByRole("button", { name: /RAG Knowledge Base: Indirect Prompt Injection/ }).click();
+    await expect(result.getByText(/No registered application has this name/)).toBeVisible();
+    await expect(result.getByText(/PI-002 · Indirect Prompt Injection/)).toBeVisible();
+  });
+
   test("toggles a rule off and on in Policy Center", async ({ page, context }) => {
     await signIn(context, users.admin);
     await page.goto(`${authUrl}/admin/policy`);

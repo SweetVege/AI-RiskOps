@@ -10,14 +10,14 @@ import { apiRequest } from "@/app/riskops/api";
 import { ActionPill, DetectionSandbox, StatCard } from "@/app/riskops/components";
 import { type UserProfile, actionMatrix } from "@/app/riskops/config";
 import { type RiskEvent } from "@/lib/risk-data";
-import { type RiskEvaluation, type SandboxInput } from "@/lib/risk-engine";
+import { type SandboxInput } from "@/lib/risk-engine";
 
 export function PolicyCenter({
   currentProfile,
   onSimulateIngestion,
 }: {
   currentProfile: UserProfile;
-  onSimulateIngestion: (input: SandboxInput, result: RiskEvaluation) => Promise<void>;
+  onSimulateIngestion: (input: SandboxInput) => Promise<void>;
 }) {
   const [summary, setSummary] = useState<PolicyCenterSummaryApi | null>(null);
   const [templates, setTemplates] = useState<PolicyTemplateApi[]>([]);
@@ -349,7 +349,7 @@ export function PolicyCenter({
             Internal Testing
           </span>
         </div>
-        <DetectionSandbox onSimulateIngestion={onSimulateIngestion} />
+        <DetectionSandbox currentProfile={currentProfile} onSimulateIngestion={onSimulateIngestion} />
       </section>
     </div>
   );

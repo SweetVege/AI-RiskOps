@@ -97,7 +97,7 @@ Demo mode (`DEMO_MODE=true`):
 | `profile` | `platform-admin`, `global-user`, `app-owner` | `platform-admin` | Simulated active user profile |
 
 - No session is required. Profile aliases with spaces are accepted, such as `platform admin`.
-- Every non-GET request returns `403 FORBIDDEN` with `details.demoMode: true`.
+- Every non-GET request returns `403 FORBIDDEN` with `details.demoMode: true`, except `POST /api/admin/policy-center/evaluate`, which is a dry run.
 
 ### 4.2 Scope Response
 
@@ -656,6 +656,37 @@ The update writes an access audit record in the same database transaction. The r
 - previous and next permission set
 - previous and next assigned application IDs
 - `occurredAt`
+
+### `POST /api/admin/policy-center/evaluate`
+
+Scores a sample model call without storing anything. The Policy Center sandbox uses it for its preview. Requires `canViewPolicyCenter`. It is a `POST` because the sample can be long and may contain sensitive text, and it stays available in demo mode because it writes nothing.
+
+Body:
+
+```json
+{
+  "app": "Customer Support Copilot",
+  "userRole": "Support Agent",
+  "environment": "Production",
+  "dataType": "Customer Data",
+  "prompt": "...",
+  "output": "...",
+  "ragContext": "...",
+  "toolCall": ""
+}
+```
+
+`app` is matched against application ID, name, or slug within the caller's scope. The sample is scored with the policy template bound to that application, exactly as ingestion would. When no application matches, it is scored against the full rule catalog and `application` is `null`.
+
+Response data:
+
+```json
+{
+  "evaluation": { "score": 65, "level": "high", "action": "redact", "findings": [], "recommendation": "...", "reviewRequired": false },
+  "application": { "id": "app-cs-copilot", "name": "Customer Support Copilot" },
+  "policy": { "templateId": "policy-customer-support", "templateName": "Customer Support Copilot Policy", "activeRuleIds": ["DLP-001"] }
+}
+```
 
 ## 12. Model Call Ingestion API
 

@@ -12,11 +12,16 @@ const readMethods = new Set(["GET", "HEAD"]);
 
 // Resolves who is calling and rejects the request when they are not signed in, lack the capability,
 // or try to write while the deployment is in demo mode.
-export async function authorizeRequest(request: Request, capability?: ApiCapability): Promise<RequestAccess> {
+export async function authorizeRequest(
+  request: Request,
+  capability?: ApiCapability,
+  // readOnly marks a non-GET endpoint that writes nothing, so demo mode still serves it.
+  options: { readOnly?: boolean } = {},
+): Promise<RequestAccess> {
   let scope: RequestScope;
 
   if (isDemoMode()) {
-    if (!readMethods.has(request.method)) {
+    if (!options.readOnly && !readMethods.has(request.method)) {
       return { ok: false, response: apiError(403, "FORBIDDEN", "Demo mode is read-only.", { demoMode: true }) };
     }
 

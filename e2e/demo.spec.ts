@@ -119,6 +119,20 @@ test.describe("demo mode", () => {
     await expect(page.getByRole("heading", { name: "Matched Rules & Evidence" })).toBeVisible();
   });
 
+  test("still previews sandbox samples, which write nothing", async ({ page }) => {
+    await page.goto(`${demoUrl}/admin/policy`);
+
+    const result = page.locator("aside").filter({ hasText: "Detection Result" });
+
+    await expect(result.getByText(/Scored with Customer Support Copilot Policy/)).toBeVisible();
+
+    const evaluated = page.waitForResponse((response) => response.url().includes("/api/admin/policy-center/evaluate"));
+
+    await page.getByRole("button", { name: /Finance Agent: High-Risk Payment Approval/ }).click();
+    expect((await evaluated).status()).toBe(200);
+    await expect(result.getByText(/TOOL-001 · High-Risk Tool Action/)).toBeVisible();
+  });
+
   test("rejects writes with a read-only message", async ({ page }) => {
     await page.goto(`${demoUrl}/admin/policy`);
     await expect(page.getByRole("heading", { name: "Rule Library" })).toBeVisible();

@@ -20,10 +20,12 @@ const leakInput: SandboxInput = {
   toolCall: "",
 };
 
-function templateWith(rules: Array<{ riskRuleId: string; enabled?: boolean; actionOverride?: string | null }>) {
+function templateWith(
+  rules: Array<{ riskRuleId: string; enabled?: boolean; actionOverride?: string | null; thresholdOverride?: number | null }>,
+) {
   return {
     id: "tpl",
-    policyRules: rules.map((rule) => ({ enabled: true, actionOverride: null, ...rule })),
+    policyRules: rules.map((rule) => ({ enabled: true, actionOverride: null, thresholdOverride: null, ...rule })),
   };
 }
 

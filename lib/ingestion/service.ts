@@ -438,7 +438,11 @@ export async function ingestModelCall(context: IngestionContext, raw: unknown): 
                   riskRuleId: finding.ruleId,
                   signal: `${finding.ruleName} in ${finding.location}`,
                   evidence: protectCapturedText(finding.evidence).value,
-                  impact: `This signal contributed ${finding.score} base points and influenced the ${evaluation.level} classification.`,
+                  impact: `This signal contributed ${finding.score} base points and influenced the ${evaluation.level} classification.${
+                    finding.heldAction
+                      ? ` Its ${finding.heldAction.action} action was held at flag because the score is below the rule threshold of ${finding.heldAction.threshold}.`
+                      : ""
+                  }`,
                 })),
               },
             },

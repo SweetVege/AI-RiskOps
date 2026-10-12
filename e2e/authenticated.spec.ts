@@ -3,7 +3,7 @@ import { authUrl, openPage, sidebar, signIn, trackPageErrors, users } from "./he
 
 test.describe("signed-in mode", () => {
   test("redirects to the login page without a session", async ({ page }) => {
-    await page.goto(`${authUrl}/?page=risk-events`);
+    await page.goto(`${authUrl}/risk-events`);
 
     await expect(page).toHaveURL(`${authUrl}/login`);
     await expect(page.getByRole("button", { name: "Sign in with GitHub" })).toBeVisible();
@@ -36,10 +36,11 @@ test.describe("signed-in mode", () => {
 
   test("limits an App Owner to assigned applications and non-admin pages", async ({ page, context }) => {
     await signIn(context, users.owner);
-    await page.goto(`${authUrl}/?page=policy`);
+    await page.goto(`${authUrl}/admin/policy`);
 
     await expect(page.getByRole("heading", { name: "AI Application Risk Overview" })).toBeVisible();
-    await expect(sidebar(page).getByRole("button", { name: "Policy Center" })).toHaveCount(0);
+    await expect(page).toHaveURL(`${authUrl}/`);
+    await expect(sidebar(page).getByRole("link", { name: "Policy Center" })).toHaveCount(0);
 
     await openPage(page, "Applications");
     await expect(page.getByRole("button", { name: /Customer Support Copilot/ }).first()).toBeVisible();
@@ -60,7 +61,7 @@ test.describe("signed-in mode", () => {
 
   test("drills from analytics into filtered risk events", async ({ page, context }) => {
     await signIn(context, users.admin);
-    await page.goto(`${authUrl}/?page=analytics`);
+    await page.goto(`${authUrl}/analytics`);
 
     await expect(page.getByRole("button", { name: /High\+Severe Rate\s*79%/ })).toBeVisible();
     await page.getByRole("button", { name: /^DLP-002/ }).click();
@@ -68,12 +69,14 @@ test.describe("signed-in mode", () => {
 
     await page.getByRole("button", { name: "Open in Risk Events" }).first().click();
     await expect(page.getByRole("heading", { name: "Risk Event Workbench" })).toBeVisible();
-    await expect(page).toHaveURL(/page=risk-events/);
+    expect(new URL(page.url()).pathname).toBe("/risk-events");
+    await expect(page).toHaveURL(/source=/);
+    await expect(page).toHaveURL(/label=/);
   });
 
   test("saves a risk event review and keeps it after reload", async ({ page, context }) => {
     await signIn(context, users.admin);
-    await page.goto(`${authUrl}/?page=risk-events`);
+    await page.goto(`${authUrl}/risk-events`);
     await expect(page.getByRole("heading", { name: "Review Metadata" })).toBeVisible();
 
     const reviewStatus = page.locator("select").filter({ hasText: "False Positive" }).last();
@@ -94,7 +97,7 @@ test.describe("signed-in mode", () => {
 
   test("simulates ingestion from the Policy Center sandbox", async ({ page, context }) => {
     await signIn(context, users.admin);
-    await page.goto(`${authUrl}/?page=policy`);
+    await page.goto(`${authUrl}/admin/policy`);
     await expect(page.getByRole("heading", { name: "Detection Sandbox" })).toBeVisible();
 
     const ingested = page.waitForResponse((response) => response.url().includes("/api/ingest/model-call") && response.request().method() === "POST");
@@ -105,13 +108,15 @@ test.describe("signed-in mode", () => {
     const payload = await response.json();
 
     expect(response.status()).toBe(201);
+    await expect(page).toHaveURL(`${authUrl}/call-logs`);
+    await expect(page.getByRole("heading", { name: payload.data.callLog.id })).toBeVisible();
     expect(payload.data.riskEvent.id).toMatch(/^evt-/);
     expect(payload.data.ingestion.policy.templateId).toBe("policy-customer-support");
   });
 
   test("toggles a rule off and on in Policy Center", async ({ page, context }) => {
     await signIn(context, users.admin);
-    await page.goto(`${authUrl}/?page=policy`);
+    await page.goto(`${authUrl}/admin/policy`);
     await expect(page.getByRole("heading", { name: "Rule Library" })).toBeVisible();
 
     const state = async () => {
@@ -140,7 +145,7 @@ test.describe("signed-in mode", () => {
 
   test("lists call logs with linked events and credentials in setup", async ({ page, context }) => {
     await signIn(context, users.admin);
-    await page.goto(`${authUrl}/?page=call-logs`);
+    await page.goto(`${authUrl}/call-logs`);
     await expect(page.getByRole("heading", { name: "Prompt", exact: true })).toBeVisible();
 
     await openPage(page, "Application Setup");

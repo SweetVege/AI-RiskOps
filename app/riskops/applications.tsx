@@ -396,9 +396,8 @@ export function ApplicationsView({
         const nextApps = payload.data.map(mapApplicationItem);
         setApps(nextApps);
 
-        if (nextApps.length && !nextApps.some((app) => app.id === selectedAppId)) {
-          setSelectedAppId(nextApps[0].id);
-        }
+        setSelectedAppId((current) =>
+          nextApps.length && !nextApps.some((app) => app.id === current) ? nextApps[0].id : current);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setListError(error instanceof Error ? error.message : "Unable to load applications.");

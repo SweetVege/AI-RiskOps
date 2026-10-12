@@ -1,21 +1,13 @@
 "use client";
 
 import { Bell, Settings2, Shield, ShieldCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { signOutAction } from "@/app/login/actions";
 import { apiRequest } from "@/app/riskops/api";
 import { type RiskEventDrillThroughFilters } from "@/app/riskops/analytics-shared";
-import {
-  type ModelCallIngestionApi,
-  type OverviewApiData,
-  type OverviewCategoryApi,
-  type OverviewSevereEventApi,
-  type OverviewSummaryApi,
-  type OverviewTopApplicationApi,
-} from "@/app/riskops/api-types";
-import { ApplicationSetup } from "@/app/riskops/application-setup";
-import { ApplicationsView } from "@/app/riskops/applications";
-import { CallLogsView } from "@/app/riskops/call-logs";
+import { type ModelCallIngestionApi } from "@/app/riskops/api-types";
 import {
   type NavLabel,
   type UserProfile,
@@ -27,17 +19,7 @@ import {
   userProfileIntents,
   userProfiles,
 } from "@/app/riskops/config";
-import {
-  readCurrentSearchParams,
-  readInitialNav,
-  replaceUrlParams,
-  updateUrlPage,
-} from "@/app/riskops/navigation";
-import { Overview } from "@/app/riskops/overview";
-import { PolicyCenter } from "@/app/riskops/policy-center";
-import { RiskAnalytics } from "@/app/riskops/risk-analytics";
-import { RiskEventsWorkbench } from "@/app/riskops/risk-events";
-import { UserAccessAdmin } from "@/app/riskops/user-access";
+import { navForPath, navRoutes } from "@/app/riskops/navigation";
 import { type SandboxInput } from "@/lib/risk-engine";
 
 export type AppSession = {
@@ -47,9 +29,32 @@ export type AppSession = {
   // Null in demo mode, where the simulated profile decides what is visible.
   permissions: Record<string, boolean | string> | null;
   assignedApplicationCount: number | null;
-  // Query string of the request that rendered the page.
-  initialSearch: string;
 };
+
+type ConsoleContextValue = {
+  currentProfile: UserProfile;
+  selectedEventId: string;
+  selectEvent: (id: string) => void;
+  selectedLogId: string;
+  selectLog: (id: string) => void;
+  openRiskEvent: (id: string) => void;
+  openRiskEvents: (filters: Omit<RiskEventDrillThroughFilters, "id">) => void;
+  simulateIngestion: (input: SandboxInput) => Promise<void>;
+};
+
+const ConsoleContext = createContext<ConsoleContextValue | null>(null);
+
+// State shared between pages: the simulated profile in demo mode and which event or call a page
+// should open on after another page links to it.
+export function useConsole() {
+  const value = useContext(ConsoleContext);
+
+  if (!value) {
+    throw new Error("useConsole must be used inside ConsoleShell.");
+  }
+
+  return value;
+}
 
 const navCapabilities: Record<NavLabel, string> = {
   Overview: "canViewOverview",
@@ -72,82 +77,46 @@ function isNavVisible(label: NavLabel, permissions: AppSession["permissions"], p
   return adminNavItems.some((item) => item.label === label) ? profile.admin : !profile.hiddenNav?.includes(label);
 }
 
-export default function RiskOpsApp({ session }: { session: AppSession }) {
-  const [selectedId, setSelectedId] = useState("");
-  const [selectedLogId, setSelectedLogId] = useState("");
-  const [activeNav, setActiveNav] = useState<NavLabel>(() => {
-    const requested = readInitialNav(session.initialSearch);
-
-    return isNavVisible(requested, session.permissions, session.profile)
-      ? requested
-      : navItems.find((item) => isNavVisible(item.label, session.permissions, session.profile))?.label ?? "Overview";
-  });
+export function ConsoleShell({ session, children }: { session: AppSession; children: React.ReactNode }) {
+  const router = useRouter();
+  const activeNav = navForPath(usePathname());
+  const [selectedEventId, selectEvent] = useState("");
+  const [selectedLogId, selectLog] = useState("");
   const [currentProfile, setCurrentProfile] = useState<UserProfile>(session.profile);
-  const [overviewData, setOverviewData] = useState<OverviewApiData | null>(null);
-  const [isOverviewLoading, setIsOverviewLoading] = useState(false);
-  const [overviewError, setOverviewError] = useState<string | null>(null);
-  const [overviewRefreshKey, setOverviewRefreshKey] = useState(0);
-  const [riskEventDrillThrough, setRiskEventDrillThrough] = useState<RiskEventDrillThroughFilters | null>(null);
   const accessProfile = userProfiles.find((profile) => profile.label === currentProfile) ?? userProfiles[0];
   const isAssignedApplicationScope = accessProfile.scope === "Assigned Applications";
   const assignedApplicationCount = session.assignedApplicationCount ?? assignedApplicationNames.length;
   const { permissions } = session;
   const visibleNavItems = navItems.filter((item) => isNavVisible(item.label, permissions, currentProfile));
   const visibleAdminNavItems = adminNavItems.filter((item) => isNavVisible(item.label, permissions, currentProfile));
-  const fallbackNav = visibleNavItems[0]?.label ?? "Overview";
+  const fallbackRoute = navRoutes[visibleNavItems[0]?.label ?? "Overview"];
   const canOpenActiveNav = [...visibleNavItems, ...visibleAdminNavItems].some((item) => item.label === activeNav);
 
   useEffect(() => {
     if (!canOpenActiveNav) {
-      setActiveNav(fallbackNav);
-      updateUrlPage(fallbackNav);
+      router.replace(fallbackRoute);
     }
-  }, [canOpenActiveNav, fallbackNav]);
+  }, [canOpenActiveNav, fallbackRoute, router]);
 
-  useEffect(() => {
-    const controller = new AbortController();
+  const openRiskEvent = useCallback((id: string) => {
+    selectEvent(id);
+    router.push(navRoutes["Risk Events"]);
+  }, [router]);
 
-    async function loadOverview() {
-      setIsOverviewLoading(true);
-      setOverviewError(null);
+  const openRiskEvents = useCallback((filters: Omit<RiskEventDrillThroughFilters, "id">) => {
+    const params = new URLSearchParams();
 
-      try {
-        const request = <T,>(path: string) => apiRequest<{ data: T }>(path, {
-          profile: currentProfile,
-          signal: controller.signal,
-          errorMessage: "Unable to load overview data",
-        });
-        const [summaryPayload, categoriesPayload, topApplicationsPayload, severeEventsPayload] = await Promise.all([
-          request<OverviewSummaryApi>("/api/overview/summary"),
-          request<OverviewCategoryApi[]>("/api/overview/risk-categories"),
-          request<OverviewTopApplicationApi[]>("/api/overview/top-applications"),
-          request<OverviewSevereEventApi[]>("/api/overview/severe-events"),
-        ]);
+    if (filters.level) params.set("level", filters.level);
+    if (filters.action) params.set("action", filters.action);
+    if (filters.applicationId) params.set("application_id", filters.applicationId);
+    if (filters.environment) params.set("environment", filters.environment.toLowerCase());
+    if (filters.q) params.set("q", filters.q);
+    params.set("source", filters.source);
+    params.set("label", filters.label);
+    router.push(`${navRoutes["Risk Events"]}?${params.toString()}`);
+  }, [router]);
 
-        setOverviewData({
-          summary: summaryPayload.data,
-          categories: categoriesPayload.data,
-          topApplications: topApplicationsPayload.data,
-          severeEvents: severeEventsPayload.data,
-        });
-      } catch (requestError) {
-        if ((requestError as Error).name !== "AbortError") {
-          setOverviewError("Unable to load overview data from the backend APIs.");
-          setOverviewData(null);
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsOverviewLoading(false);
-        }
-      }
-    }
-
-    loadOverview();
-
-    return () => controller.abort();
-  }, [currentProfile, overviewRefreshKey]);
-
-  const simulateIngestion = async (input: SandboxInput) => {
+  const simulateIngestion = useCallback(async (input: SandboxInput) => {
     const payload = await apiRequest<{ data: ModelCallIngestionApi }>("/api/ingest/model-call", {
       profile: currentProfile,
       method: "POST",
@@ -188,50 +157,26 @@ export default function RiskOpsApp({ session }: { session: AppSession }) {
       },
       errorMessage: "Unable to ingest model call.",
     });
-    setSelectedLogId(payload.data.callLog.id);
+
+    selectLog(payload.data.callLog.id);
 
     if (payload.data.riskEvent?.id) {
-      setSelectedId(payload.data.riskEvent.id);
+      selectEvent(payload.data.riskEvent.id);
     }
 
-    setOverviewRefreshKey((current) => current + 1);
-    setActiveNav("Call Logs");
-    updateUrlPage("Call Logs");
-  };
+    router.push(navRoutes["Call Logs"]);
+  }, [currentProfile, router]);
 
-  const openRiskEvent = (id: string) => {
-    setSelectedId(id);
-    setRiskEventDrillThrough(null);
-    setActiveNav("Risk Events");
-    updateUrlPage("Risk Events");
-  };
-
-  const openRiskEventsFromAnalytics = (filters: Omit<RiskEventDrillThroughFilters, "id">) => {
-    setRiskEventDrillThrough({ ...filters, id: Date.now() });
-    setActiveNav("Risk Events");
-    const params = readCurrentSearchParams();
-    params.set("page", "risk-events");
-
-    if (filters.level) params.set("level", filters.level);
-    else params.delete("level");
-
-    if (filters.action) params.set("action", filters.action);
-    else params.delete("action");
-
-    if (filters.applicationId) params.set("application_id", filters.applicationId);
-    else params.delete("application_id");
-
-    if (filters.environment) params.set("environment", filters.environment.toLowerCase());
-    else params.delete("environment");
-
-    if (filters.q) params.set("q", filters.q);
-    else params.delete("q");
-
-    params.delete("review_status");
-    params.set("source", filters.source);
-    params.set("label", filters.label);
-    replaceUrlParams(params);
-  };
+  const consoleValue = useMemo(() => ({
+    currentProfile,
+    selectedEventId,
+    selectEvent,
+    selectedLogId,
+    selectLog,
+    openRiskEvent,
+    openRiskEvents,
+    simulateIngestion,
+  }), [currentProfile, openRiskEvent, openRiskEvents, selectedEventId, selectedLogId, simulateIngestion]);
 
   const pageTitle =
     activeNav === "Risk Events"
@@ -272,13 +217,9 @@ export default function RiskOpsApp({ session }: { session: AppSession }) {
                 const Icon = item.icon;
                 const isActive = item.label === activeNav;
                 return (
-                  <button
+                  <Link
                     key={item.label}
-                    type="button"
-                    onClick={() => {
-                      setActiveNav(item.label);
-                      updateUrlPage(item.label);
-                    }}
+                    href={navRoutes[item.label]}
                     className={`flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium ${
                       isActive
                         ? "bg-ink text-white"
@@ -287,7 +228,7 @@ export default function RiskOpsApp({ session }: { session: AppSession }) {
                   >
                     <Icon className="h-4 w-4" />
                     {item.label}
-                  </button>
+                  </Link>
                 );
               })}
             </nav>
@@ -302,13 +243,9 @@ export default function RiskOpsApp({ session }: { session: AppSession }) {
                     const Icon = item.icon;
                     const isActive = item.label === activeNav;
                     return (
-                      <button
+                      <Link
                         key={item.label}
-                        type="button"
-                        onClick={() => {
-                          setActiveNav(item.label);
-                          updateUrlPage(item.label);
-                        }}
+                        href={navRoutes[item.label]}
                         className={`flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium ${
                           isActive
                             ? "bg-ink text-white"
@@ -324,7 +261,7 @@ export default function RiskOpsApp({ session }: { session: AppSession }) {
                         >
                           {item.badge}
                         </span>
-                      </button>
+                      </Link>
                     );
                   })}
                 </div>
@@ -413,45 +350,7 @@ export default function RiskOpsApp({ session }: { session: AppSession }) {
             </div>
           </section>
 
-          {activeNav === "Risk Events" ? (
-            <RiskEventsWorkbench
-              initialSearch={session.initialSearch}
-              currentProfile={currentProfile}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              drillThroughFilters={riskEventDrillThrough}
-            />
-          ) : activeNav === "Risk Analytics" ? (
-            <RiskAnalytics
-              currentProfile={currentProfile}
-              onOpenRiskEvents={openRiskEventsFromAnalytics}
-            />
-          ) : activeNav === "Call Logs" ? (
-            <CallLogsView
-              currentProfile={currentProfile}
-              selectedLogId={selectedLogId}
-              onSelect={setSelectedLogId}
-            />
-          ) : activeNav === "Policy Center" ? (
-            <PolicyCenter currentProfile={currentProfile} onSimulateIngestion={simulateIngestion} />
-          ) : activeNav === "Application Setup" ? (
-            <ApplicationSetup currentProfile={currentProfile} />
-          ) : activeNav === "User Access" ? (
-            <UserAccessAdmin currentProfile={currentProfile} />
-          ) : activeNav === "Applications" ? (
-            <ApplicationsView
-              currentProfile={currentProfile}
-              onOpenEvent={openRiskEvent}
-            />
-          ) : (
-            <Overview
-              currentProfile={currentProfile}
-              overviewData={overviewData}
-              isLoading={isOverviewLoading}
-              error={overviewError}
-              onOpenEvent={openRiskEvent}
-            />
-          )}
+          <ConsoleContext.Provider value={consoleValue}>{children}</ConsoleContext.Provider>
         </section>
       </div>
     </main>

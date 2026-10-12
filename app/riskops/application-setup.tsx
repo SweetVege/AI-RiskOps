@@ -1,5 +1,5 @@
 import { Activity, Code2, Copy, Gauge, ShieldCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   type ApplicationCredentialApi,
   type ApplicationCredentialMutationApi,
@@ -242,7 +242,7 @@ export function ApplicationSetup({ currentProfile }: { currentProfile: UserProfi
   const rotationRequiredCount = credentials.filter((credential) => credential.status === "rotation_required").length;
   const missingCredentialCount = credentials.filter((credential) => credential.status === "not_created").length;
 
-  async function loadApplicationSetup(signal?: AbortSignal) {
+  const loadApplicationSetup = useCallback(async (signal?: AbortSignal) => {
     setIsSetupLoading(true);
     setSetupError(null);
 
@@ -267,9 +267,9 @@ export function ApplicationSetup({ currentProfile }: { currentProfile: UserProfi
         setIsSetupLoading(false);
       }
     }
-  }
+  }, [currentProfile]);
 
-  async function loadCredentials(signal?: AbortSignal) {
+  const loadCredentials = useCallback(async (signal?: AbortSignal) => {
     setIsCredentialLoading(true);
     setCredentialError(null);
 
@@ -289,9 +289,9 @@ export function ApplicationSetup({ currentProfile }: { currentProfile: UserProfi
         setIsCredentialLoading(false);
       }
     }
-  }
+  }, [currentProfile]);
 
-  async function loadIngestionAudits(signal?: AbortSignal) {
+  const loadIngestionAudits = useCallback(async (signal?: AbortSignal) => {
     setIsAuditLoading(true);
     setAuditError(null);
 
@@ -316,7 +316,7 @@ export function ApplicationSetup({ currentProfile }: { currentProfile: UserProfi
         setIsAuditLoading(false);
       }
     }
-  }
+  }, [currentProfile]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -325,7 +325,7 @@ export function ApplicationSetup({ currentProfile }: { currentProfile: UserProfi
     loadIngestionAudits(controller.signal);
 
     return () => controller.abort();
-  }, [currentProfile]);
+  }, [loadApplicationSetup, loadCredentials, loadIngestionAudits]);
 
   async function submitCredentialAction(credential: ApplicationCredentialApi, action: "generate" | "rotate" | "revoke") {
     const actionKey = `${action}-${credential.applicationId}`;

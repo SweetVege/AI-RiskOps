@@ -1,7 +1,7 @@
 import { Activity, AlertOctagon, Gauge, Search, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/app/riskops/api";
-import { type RiskEventDrillThroughFilters, type RiskEventSavedView } from "@/app/riskops/analytics-shared";
+import { type RiskEventSavedView } from "@/app/riskops/analytics-shared";
 import {
   type PaginationApi,
   type RiskEventDetailApi,
@@ -26,13 +26,11 @@ export function RiskEventsWorkbench({
   currentProfile,
   selectedId,
   onSelect,
-  drillThroughFilters,
   initialSearch,
 }: {
   currentProfile: UserProfile;
   selectedId: string;
   onSelect: (id: string) => void;
-  drillThroughFilters: RiskEventDrillThroughFilters | null;
   initialSearch: string;
 }) {
   const [events, setEvents] = useState<RiskEvent[]>([]);
@@ -110,25 +108,11 @@ export function RiskEventsWorkbench({
   }, [savedViews]);
 
   useEffect(() => {
-    if (!drillThroughFilters) return;
-
-    setSearchQuery(drillThroughFilters.q ?? "");
-    setLevelFilter(drillThroughFilters.level ?? "All");
-    setActionFilter(drillThroughFilters.action ?? "All");
-    setReviewFilter("All");
-    setApplicationIdFilter(drillThroughFilters.applicationId ?? "");
-    setEnvironmentFilter(drillThroughFilters.environment?.toLowerCase() ?? "");
-    setDrillThroughLabel(`${drillThroughFilters.source}: ${drillThroughFilters.label}`);
-    setPageNumber(1);
-  }, [drillThroughFilters]);
-
-  useEffect(() => {
     setPageNumber(1);
   }, [actionFilter, applicationIdFilter, environmentFilter, levelFilter, reviewFilter, searchQuery]);
 
   useEffect(() => {
     const params = readCurrentSearchParams();
-    params.set("page", "risk-events");
 
     if (levelFilter !== "All") params.set("level", levelFilter);
     else params.delete("level");

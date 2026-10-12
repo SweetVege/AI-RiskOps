@@ -6,6 +6,8 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
+  // Pages load their data after render; allow slower CI machines more than the 5s default.
+  expect: { timeout: 10_000 },
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     trace: "retain-on-failure",

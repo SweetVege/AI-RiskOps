@@ -46,6 +46,7 @@ export async function evaluateWithApplicationPolicy(scope: RequestScope, input: 
       templateId: policy.templateId,
       templateName: application?.policyTemplate?.name ?? null,
       activeRuleIds: policy.activeRuleIds,
+      scoreBands: policy.scoreBands,
     },
   };
 }

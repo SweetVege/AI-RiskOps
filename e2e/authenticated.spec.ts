@@ -146,6 +146,52 @@ test.describe("signed-in mode", () => {
     await expect(result.getByText(/PI-002 · Indirect Prompt Injection/)).toBeVisible();
   });
 
+  test("enforces the score bands set on a policy template", async ({ page, context }) => {
+    const templateUrl = `${authUrl}/api/admin/policy-center/templates/policy-customer-support`;
+
+    await signIn(context, users.admin);
+    await page.goto(`${authUrl}/admin/policy`);
+
+    const tuning = page.locator("section").filter({ has: page.getByRole("heading", { name: "Template Rule Tuning" }) }).last();
+    const bands = tuning.locator("[data-score-bands]");
+    const result = page.locator("aside").filter({ hasText: "Detection Result" });
+    const card = page.locator("article").filter({ hasText: "Customer Support Copilot Policy" });
+
+    // Seeded bands: 60+ review, 80+ block. The default sample scores 65.
+    await expect(card.getByText("Thresholds: 60+ review, 80+ block")).toBeVisible();
+    await expect(bands.getByLabel("Review from")).toHaveValue("60");
+    await expect(bands.getByLabel("Block from")).toHaveValue("80");
+    await expect(bands.getByRole("button", { name: "Save Bands" })).toBeDisabled();
+    await expect(result.getByRole("heading", { name: "High · Human Review" })).toBeVisible();
+    await expect(result.getByText("Score band: calls scoring 60+ are raised to Human Review.")).toBeVisible();
+
+    try {
+      await bands.getByLabel("Review from").fill("85");
+      await bands.getByRole("button", { name: "Save Bands" }).click();
+      await expect(tuning.getByText("Review must start at a lower score than block.")).toBeVisible();
+
+      await bands.getByLabel("Review from").fill("70");
+
+      const saved = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().startsWith(templateUrl));
+
+      await bands.getByRole("button", { name: "Save Bands" }).click();
+      expect((await saved).status()).toBe(200);
+      await expect(card.getByText("Thresholds: 70+ review, 80+ block")).toBeVisible();
+      await expect(bands.getByRole("button", { name: "Save Bands" })).toBeDisabled();
+
+      // At 65 the call is now below the review band, so the rule's own action stands.
+      await page.getByRole("button", { name: "Run Detection" }).click();
+      await expect(result.getByRole("heading", { name: "High · Redact" })).toBeVisible();
+      await expect(result.getByText(/Score band:/)).toHaveCount(0);
+
+      if (process.env.E2E_SHOTS) {
+        await tuning.screenshot({ path: `${process.env.E2E_SHOTS}/bands.png` });
+      }
+    } finally {
+      expect((await page.request.patch(templateUrl, { data: { reviewAt: 60, blockAt: 80, escalateAt: null } })).status()).toBe(200);
+    }
+  });
+
   test("holds a rule's action behind a score threshold set in Template Rule Tuning", async ({ page, context }) => {
     const policyRuleId = "policy-customer-support-DLP-001";
     const reset = () => page.request.patch(`${authUrl}/api/admin/policy-center/policy-rules/${policyRuleId}`, {
@@ -162,10 +208,11 @@ test.describe("signed-in mode", () => {
     await expect(tuning.getByLabel("Policy template")).toHaveValue("policy-customer-support");
     await expect(tuning.locator('[data-rule-id="PI-001"]').getByLabel("Threshold for PI-001")).toBeDisabled();
     await expect(row.getByRole("button", { name: "Save" })).toBeDisabled();
-    await expect(result.getByRole("heading", { name: "High · Redact" })).toBeVisible();
+    // The template's 60+ review band already lifts this 65-point sample above the rule's own redact action.
+    await expect(result.getByRole("heading", { name: "High · Human Review" })).toBeVisible();
 
     try {
-      // The default sandbox sample scores 65, so a threshold of 90 keeps the redaction from applying.
+      // A threshold of 90 keeps the rule's redaction from applying to a 65-point call.
       await row.getByLabel("Threshold for DLP-001").fill("90");
 
       const saved = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes(policyRuleId));
@@ -176,8 +223,8 @@ test.describe("signed-in mode", () => {
       await expect(row.getByLabel("Threshold for DLP-001")).toHaveValue("90");
 
       await page.getByRole("button", { name: "Run Detection" }).click();
-      await expect(result.getByRole("heading", { name: "High · Flag" })).toBeVisible();
       await expect(result.getByText("Held at Flag: Redact applies from score 90.")).toBeVisible();
+      await expect(result.getByRole("heading", { name: "High · Human Review" })).toBeVisible();
 
       if (process.env.E2E_SHOTS) {
         await tuning.screenshot({ path: `${process.env.E2E_SHOTS}/tuning.png` });

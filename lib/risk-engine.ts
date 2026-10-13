@@ -1,3 +1,4 @@
+import { defaultScoreBands, type ScoreBands } from "@/lib/policy/score-bands";
 import { riskRules, type RiskAction, type RiskLevel } from "@/lib/risk-data";
 
 export type SandboxInput = {
@@ -32,6 +33,10 @@ export type RiskEvaluation = {
   evidence: string[];
   recommendation: string;
   reviewRequired: boolean;
+  // Set when the template's score band asked for a stronger response than the matched rules did.
+  raisedBy?: { action: RiskAction; threshold: number };
+  // The score reached the template's escalation band, so the event starts out escalated.
+  escalated: boolean;
 };
 
 export type SandboxTemplate = {
@@ -54,6 +59,7 @@ export type PolicyRuleSetting = {
 // Rules absent from the map are inactive: their detectors still run but produce no finding.
 export type EvaluationPolicy = {
   rules: ReadonlyMap<string, PolicyRuleSetting>;
+  scoreBands?: ScoreBands;
 };
 
 export const defaultEvaluationPolicy: EvaluationPolicy = {
@@ -163,13 +169,23 @@ function resolveLevel(score: number): RiskLevel {
   return "low";
 }
 
-function resolveAction(score: number, findings: RiskFinding[]): RiskAction {
-  if (findings.length === 0) return "allow";
+function resolveAction(score: number, findings: RiskFinding[], bands: ScoreBands) {
+  if (findings.length === 0) return { action: "allow" as RiskAction };
+
   const strongest = findings.reduce<RiskAction>((current, finding) => {
     return actionRank[finding.action] > actionRank[current] ? finding.action : current;
   }, "flag");
-  if (score >= 80 && actionRank[strongest] < actionRank.review) return "review";
-  return strongest;
+  const band =
+    bands.blockAt !== null && score >= bands.blockAt
+      ? { action: "block" as RiskAction, threshold: bands.blockAt }
+      : bands.reviewAt !== null && score >= bands.reviewAt
+        ? { action: "review" as RiskAction, threshold: bands.reviewAt }
+        : null;
+
+  // Bands only ever strengthen the response the matched rules already call for.
+  return band && actionRank[band.action] > actionRank[strongest]
+    ? { action: band.action, raisedBy: band }
+    : { action: strongest };
 }
 
 function buildRecommendation(action: RiskAction, findings: RiskFinding[]) {
@@ -239,8 +255,10 @@ export function evaluateAiCall(input: SandboxInput, policy: EvaluationPolicy = d
 
   applyActionThresholds(score, findings, policy);
 
+  const bands = policy.scoreBands ?? defaultScoreBands;
   const level = resolveLevel(score);
-  const action = resolveAction(score, findings);
+  const { action, raisedBy } = resolveAction(score, findings, bands);
+  const escalated = findings.length > 0 && bands.escalateAt !== null && score >= bands.escalateAt;
   const evidence = findings.map((finding) => `${finding.ruleId} · ${finding.location}: ${finding.evidence}`);
 
   return {
@@ -250,7 +268,9 @@ export function evaluateAiCall(input: SandboxInput, policy: EvaluationPolicy = d
     findings,
     evidence,
     recommendation: buildRecommendation(action, findings),
-    reviewRequired: action === "review" || level === "severe",
+    reviewRequired: action === "review" || level === "severe" || escalated,
+    raisedBy,
+    escalated,
   };
 }
 

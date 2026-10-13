@@ -559,7 +559,7 @@ async function main() {
     await prisma.riskRule.create({ data: { id, name, category, trigger, baseScore, defaultAction, iconName } });
   }
 
-  for (const [id, name, scope, defaultAction, thresholds, enabled, ruleIds] of policyTemplates) {
+  for (const [id, name, scope, defaultAction, thresholds, enabled, ruleIds, scoreBands] of policyTemplates) {
     await prisma.policyTemplate.create({
       data: {
         id,
@@ -567,6 +567,7 @@ async function main() {
         scope,
         defaultAction,
         thresholds,
+        ...scoreBands,
         enabled,
         policyRules: {
           create: ruleIds.map((riskRuleId) => ({

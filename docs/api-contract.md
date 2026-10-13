@@ -657,6 +657,18 @@ The update writes an access audit record in the same database transaction. The r
 - previous and next assigned application IDs
 - `occurredAt`
 
+### `PATCH /api/admin/policy-center/templates/{id}`
+
+Sets the score bands a policy template enforces. Requires `canManagePolicyCenter`.
+
+```json
+{ "reviewAt": 60, "blockAt": 80, "escalateAt": null }
+```
+
+Each band is an integer `1` to `100`, or `null` to unset it. An omitted band is left unchanged. `reviewAt` must be lower than `blockAt` when both are set. Clearing all three returns the template to the default `80+ review`. Returns the updated template.
+
+In `GET /api/admin/policy-center`, each template's `thresholds` text is generated from the enforced bands, and `scoreBands` carries the values plus `usesDefault`.
+
 ### `PATCH /api/admin/policy-center/policy-rules/{id}`
 
 Tunes one rule inside one policy template. `id` is the policy rule ID returned by `GET /api/admin/policy-center` (`data.policyRules[].id`). Requires `canManagePolicyCenter`.
@@ -757,6 +769,7 @@ Policy evaluation:
 - Detection uses the rule catalog in the database (`RiskRule`) and the policy template bound to the application.
 - A rule produces findings when the application's template enables it. An application without a template uses every catalog rule.
 - Baseline rules `PI-001`, `PI-002`, `DLP-002`, `ACCESS-001`, `TOOL-001`, and `SYS-001` always apply and cannot be disabled through Policy Center. The Policy Center response marks them with `riskRule.baseline: true`.
+- Each policy template enforces score bands on the call's total risk score: `reviewAt` (the call gets human review), `blockAt` (the call is blocked), and `escalateAt` (the risk event is created with review status `escalated`). Bands only raise the response the matched rules already call for, and never act on a call with no findings. A template that sets no band, and an application with no template, use the default `80+ review`. When a band raises the action the evaluation carries `raisedBy: { action, threshold }`.
 - A template rule's `actionOverride` replaces the rule's default action.
 - A template rule's `thresholdOverride` (1 to 100) is the total risk score from which that rule's action applies. Below it the finding is still recorded and the event is still created, but the rule's action is held at `flag` and the finding carries `heldAction: { action, threshold }`. The score and level are unaffected. Thresholds are ignored on baseline rules and on rules the template has disabled.
 - Disabling a template does not change detection for applications already bound to it.

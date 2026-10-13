@@ -644,6 +644,16 @@ export function DetectionResult({
       <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
         {evaluationPolicyLabel(response)} {response.policy.activeRuleIds.length} rules active.
       </p>
+      {result.raisedBy ? (
+        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+          Score band: calls scoring {result.raisedBy.threshold}+ are raised to {actionMeta[result.raisedBy.action].label}.
+        </p>
+      ) : null}
+      {result.escalated ? (
+        <p className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-900">
+          Score band: this score reaches the escalation band, so the event would be created as escalated.
+        </p>
+      ) : null}
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div className="rounded-lg bg-panel p-3">

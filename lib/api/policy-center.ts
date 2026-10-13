@@ -1,10 +1,14 @@
 import { isBaselineRule } from "@/lib/policy/effective-policy";
+import { hasScoreBands, scoreBandLabel, scoreBandsForTemplate } from "@/lib/policy/score-bands";
 export function formatPolicyTemplate(template: {
   id: string;
   name: string;
   scope: string;
   defaultAction: string;
   thresholds: string;
+  reviewAtScore: number | null;
+  blockAtScore: number | null;
+  escalateAtScore: number | null;
   enabled: boolean;
   policyRules: Array<{
     enabled: boolean;
@@ -14,12 +18,19 @@ export function formatPolicyTemplate(template: {
     id: string;
   }>;
 }) {
+  const scoreBands = scoreBandsForTemplate(template);
+
   return {
     id: template.id,
     name: template.name,
     scope: template.scope,
     defaultAction: template.defaultAction,
-    thresholds: template.thresholds,
+    // Generated from the enforced bands rather than the legacy free-text column.
+    thresholds: `${scoreBandLabel(scoreBands)}${hasScoreBands(template) ? "" : " (default)"}`,
+    scoreBands: {
+      ...scoreBands,
+      usesDefault: !hasScoreBands(template),
+    },
     enabled: template.enabled,
     ruleCount: template.policyRules.length,
     enabledRuleCount: template.policyRules.filter((rule) => rule.enabled).length,

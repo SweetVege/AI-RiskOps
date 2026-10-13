@@ -101,6 +101,13 @@ export type PolicyTemplateApi = {
   scope: string;
   defaultAction: string;
   thresholds: string;
+  scoreBands: {
+    reviewAt: number | null;
+    blockAt: number | null;
+    escalateAt: number | null;
+    // True when the template sets no band and the built-in default applies.
+    usesDefault: boolean;
+  };
   enabled: boolean;
   ruleCount: number;
   enabledRuleCount: number;

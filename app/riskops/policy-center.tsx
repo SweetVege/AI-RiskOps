@@ -8,6 +8,7 @@ import {
 } from "@/app/riskops/api-types";
 import { apiRequest } from "@/app/riskops/api";
 import { ActionPill, DetectionSandbox, StatCard } from "@/app/riskops/components";
+import { PolicyRuleTuning } from "@/app/riskops/policy-rule-tuning";
 import { type UserProfile, actionMatrix } from "@/app/riskops/config";
 import { type RiskEvent } from "@/lib/risk-data";
 import { type SandboxInput } from "@/lib/risk-engine";
@@ -336,6 +337,13 @@ export function PolicyCenter({
           </div>
         </aside>
       </section>
+
+      <PolicyRuleTuning
+        currentProfile={currentProfile}
+        templates={templates}
+        policyRules={policyRules}
+        onSaved={loadPolicyCenter}
+      />
 
       <section>
         <div className="mb-4 flex items-start justify-between gap-4">

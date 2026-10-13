@@ -657,6 +657,21 @@ The update writes an access audit record in the same database transaction. The r
 - previous and next assigned application IDs
 - `occurredAt`
 
+### `PATCH /api/admin/policy-center/policy-rules/{id}`
+
+Tunes one rule inside one policy template. `id` is the policy rule ID returned by `GET /api/admin/policy-center` (`data.policyRules[].id`). Requires `canManagePolicyCenter`.
+
+```json
+{ "actionOverride": "block", "thresholdOverride": 70 }
+```
+
+| Field | Values | Meaning |
+|---|---|---|
+| `actionOverride` | `flag`, `redact`, `review`, `block`, or `null` | Action this rule takes in this template; `null` restores the rule default |
+| `thresholdOverride` | integer `1` to `100`, or `null` | Total risk score from which the action applies; `null` applies it at any score |
+
+Send either field or both; an omitted field is left unchanged. A threshold on a baseline rule is rejected with `400 BAD_REQUEST`. Returns the updated policy rule.
+
 ### `POST /api/admin/policy-center/evaluate`
 
 Scores a sample model call without storing anything. The Policy Center sandbox uses it for its preview. Requires `canViewPolicyCenter`. It is a `POST` because the sample can be long and may contain sensitive text, and it stays available in demo mode because it writes nothing.
@@ -742,7 +757,8 @@ Policy evaluation:
 - Detection uses the rule catalog in the database (`RiskRule`) and the policy template bound to the application.
 - A rule produces findings when the application's template enables it. An application without a template uses every catalog rule.
 - Baseline rules `PI-001`, `PI-002`, `DLP-002`, `ACCESS-001`, `TOOL-001`, and `SYS-001` always apply and cannot be disabled through Policy Center. The Policy Center response marks them with `riskRule.baseline: true`.
-- A template rule's `actionOverride` replaces the rule's default action. `thresholdOverride` is stored but not evaluated yet.
+- A template rule's `actionOverride` replaces the rule's default action.
+- A template rule's `thresholdOverride` (1 to 100) is the total risk score from which that rule's action applies. Below it the finding is still recorded and the event is still created, but the rule's action is held at `flag` and the finding carries `heldAction: { action, threshold }`. The score and level are unaffected. Thresholds are ignored on baseline rules and on rules the template has disabled.
 - Disabling a template does not change detection for applications already bound to it.
 - The response includes `ingestion.policy` with the `templateId` and `activeRuleIds` used for the call.
 

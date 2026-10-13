@@ -146,6 +146,52 @@ test.describe("signed-in mode", () => {
     await expect(result.getByText(/PI-002 · Indirect Prompt Injection/)).toBeVisible();
   });
 
+  test("holds a rule's action behind a score threshold set in Template Rule Tuning", async ({ page, context }) => {
+    const policyRuleId = "policy-customer-support-DLP-001";
+    const reset = () => page.request.patch(`${authUrl}/api/admin/policy-center/policy-rules/${policyRuleId}`, {
+      data: { actionOverride: null, thresholdOverride: null },
+    });
+
+    await signIn(context, users.admin);
+    await page.goto(`${authUrl}/admin/policy`);
+
+    const tuning = page.locator("section").filter({ has: page.getByRole("heading", { name: "Template Rule Tuning" }) }).last();
+    const row = tuning.locator('[data-rule-id="DLP-001"]');
+    const result = page.locator("aside").filter({ hasText: "Detection Result" });
+
+    await expect(tuning.getByLabel("Policy template")).toHaveValue("policy-customer-support");
+    await expect(tuning.locator('[data-rule-id="PI-001"]').getByLabel("Threshold for PI-001")).toBeDisabled();
+    await expect(row.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(result.getByRole("heading", { name: "High · Redact" })).toBeVisible();
+
+    try {
+      // The default sandbox sample scores 65, so a threshold of 90 keeps the redaction from applying.
+      await row.getByLabel("Threshold for DLP-001").fill("90");
+
+      const saved = page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes(policyRuleId));
+
+      await row.getByRole("button", { name: "Save" }).click();
+      expect((await saved).status()).toBe(200);
+      await expect(row.getByRole("button", { name: "Save" })).toBeDisabled();
+      await expect(row.getByLabel("Threshold for DLP-001")).toHaveValue("90");
+
+      await page.getByRole("button", { name: "Run Detection" }).click();
+      await expect(result.getByRole("heading", { name: "High · Flag" })).toBeVisible();
+      await expect(result.getByText("Held at Flag: Redact applies from score 90.")).toBeVisible();
+
+      if (process.env.E2E_SHOTS) {
+        await tuning.screenshot({ path: `${process.env.E2E_SHOTS}/tuning.png` });
+        await result.screenshot({ path: `${process.env.E2E_SHOTS}/held.png` });
+      }
+
+      await row.getByLabel("Threshold for DLP-001").fill("101");
+      await row.getByRole("button", { name: "Save" }).click();
+      await expect(tuning.getByText(/whole number from 1 to 100/)).toBeVisible();
+    } finally {
+      expect((await reset()).status()).toBe(200);
+    }
+  });
+
   test("toggles a rule off and on in Policy Center", async ({ page, context }) => {
     await signIn(context, users.admin);
     await page.goto(`${authUrl}/admin/policy`);
@@ -162,7 +208,11 @@ test.describe("signed-in mode", () => {
     expect(await state()).toBe(true);
 
     // Baseline rules are always enforced, so their switch is locked.
-    const baselineRow = page.locator("tr, div").filter({ hasText: /^PI-001/ }).last();
+    const baselineRow = page
+      .locator("tr, div")
+      .filter({ hasText: /^PI-001/ })
+      .filter({ has: page.getByRole("button", { name: "Always on" }) })
+      .last();
 
     await expect(baselineRow.getByRole("button", { name: "Always on" })).toBeDisabled();
 

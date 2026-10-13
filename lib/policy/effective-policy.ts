@@ -20,6 +20,7 @@ type TemplateRule = {
   riskRuleId: string;
   enabled: boolean;
   actionOverride: string | null;
+  thresholdOverride: number | null;
 };
 
 export type EffectivePolicy = EvaluationPolicy & {
@@ -33,6 +34,16 @@ export function isBaselineRule(ruleId: string) {
 
 function toAction(value: string | null | undefined): RiskAction | null {
   return value && riskActions.includes(value) ? (value as RiskAction) : null;
+}
+
+export const minActionThreshold = 1;
+export const maxActionThreshold = 100;
+
+// Baseline rules must always act, so a threshold on one is ignored even if it reaches the database.
+function toActionThreshold(ruleId: string, value: number | null) {
+  if (value === null || isBaselineRule(ruleId)) return undefined;
+
+  return value >= minActionThreshold && value <= maxActionThreshold ? value : undefined;
 }
 
 // An application without a template gets every catalog rule. With a template, a rule is active when the
@@ -56,6 +67,7 @@ export function buildEffectivePolicy(
       category: rule.category,
       baseScore: rule.baseScore,
       action: toAction(templateRule?.enabled ? templateRule.actionOverride : null) ?? toAction(rule.defaultAction) ?? "flag",
+      actionThreshold: templateRule?.enabled ? toActionThreshold(rule.id, templateRule.thresholdOverride) : undefined,
     });
   }
 
@@ -78,7 +90,7 @@ export async function loadEffectivePolicy(
     policyTemplateId
       ? db.policyRule.findMany({
           where: { policyTemplateId },
-          select: { riskRuleId: true, enabled: true, actionOverride: true },
+          select: { riskRuleId: true, enabled: true, actionOverride: true, thresholdOverride: true },
         })
       : null,
   ]);

@@ -684,6 +684,11 @@ export function DetectionResult({
                   </span>
                 </div>
                 <p className="mt-2 text-xs leading-5 text-slate-600">{finding.evidence}</p>
+                {finding.heldAction ? (
+                  <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-xs leading-5 text-amber-900">
+                    Held at Flag: {actionMeta[finding.heldAction.action].label} applies from score {finding.heldAction.threshold}.
+                  </p>
+                ) : null}
               </div>
             ))
           ) : (

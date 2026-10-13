@@ -20,6 +20,8 @@ export type RiskFinding = {
   action: RiskAction;
   evidence: string;
   location: "Prompt" | "Model Output" | "RAG Context" | "Tool Call" | "Context";
+  // Set when the rule's action was held at flag because the call scored below the rule's threshold.
+  heldAction?: { action: RiskAction; threshold: number };
 };
 
 export type RiskEvaluation = {
@@ -44,6 +46,9 @@ export type PolicyRuleSetting = {
   category: string;
   baseScore: number;
   action: RiskAction;
+  // The rule's action only applies once the call's total score reaches this value; below it the
+  // finding is still recorded but its action is held at flag.
+  actionThreshold?: number;
 };
 
 // Rules absent from the map are inactive: their detectors still run but produce no finding.
@@ -140,6 +145,17 @@ function addFinding(
   });
 }
 
+function applyActionThresholds(score: number, findings: RiskFinding[], policy: EvaluationPolicy) {
+  for (const finding of findings) {
+    const threshold = policy.rules.get(finding.ruleId)?.actionThreshold;
+
+    if (threshold !== undefined && score < threshold && actionRank[finding.action] > actionRank.flag) {
+      finding.heldAction = { action: finding.action, threshold };
+      finding.action = "flag";
+    }
+  }
+}
+
 function resolveLevel(score: number): RiskLevel {
   if (score >= 80) return "severe";
   if (score >= 60) return "high";
@@ -157,7 +173,8 @@ function resolveAction(score: number, findings: RiskFinding[]): RiskAction {
 }
 
 function buildRecommendation(action: RiskAction, findings: RiskFinding[]) {
-  const ruleIds = findings.map((finding) => finding.ruleId);
+  // A rule whose action is held below its threshold should not drive rule-specific advice.
+  const ruleIds = findings.filter((finding) => !finding.heldAction).map((finding) => finding.ruleId);
   if (ruleIds.includes("DLP-002")) {
     return "Block the request, ask the user to rotate the suspected leaked key, and inspect related repositories and call logs.";
   }
@@ -219,6 +236,8 @@ export function evaluateAiCall(input: SandboxInput, policy: EvaluationPolicy = d
   if (input.dataType !== "General Data") score += 15;
   if (input.toolCall.trim()) score += 10;
   score = Math.max(0, Math.min(100, score));
+
+  applyActionThresholds(score, findings, policy);
 
   const level = resolveLevel(score);
   const action = resolveAction(score, findings);

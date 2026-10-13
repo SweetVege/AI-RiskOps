@@ -202,7 +202,11 @@ model PolicyTemplate {
   name           String
   scope          String
   defaultAction  String
+  // Legacy free text. The enforced values are the three score columns below.
   thresholds     String
+  reviewAtScore   Int?
+  blockAtScore    Int?
+  escalateAtScore Int?
   enabled        Boolean
   applications   Application[]
   policyRules    PolicyRule[]

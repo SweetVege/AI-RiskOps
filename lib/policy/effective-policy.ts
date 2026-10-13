@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { scoreBandsForTemplate, type ScoreBands } from "@/lib/policy/score-bands";
 import { prisma } from "@/lib/prisma";
 import type { RiskAction } from "@/lib/risk-data";
 import type { EvaluationPolicy, PolicyRuleSetting } from "@/lib/risk-engine";
@@ -24,6 +25,7 @@ type TemplateRule = {
 };
 
 export type EffectivePolicy = EvaluationPolicy & {
+  scoreBands: ScoreBands;
   templateId: string | null;
   activeRuleIds: string[];
 };
@@ -51,7 +53,13 @@ function toActionThreshold(ruleId: string, value: number | null) {
 // bound to it; disabling only stops new applications from selecting it.
 export function buildEffectivePolicy(
   catalog: CatalogRule[],
-  template: { id: string; policyRules: TemplateRule[] } | null,
+  template: {
+    id: string;
+    policyRules: TemplateRule[];
+    reviewAtScore?: number | null;
+    blockAtScore?: number | null;
+    escalateAtScore?: number | null;
+  } | null,
 ): EffectivePolicy {
   const templateRules = new Map(template?.policyRules.map((rule) => [rule.riskRuleId, rule]));
   const rules = new Map<string, PolicyRuleSetting>();
@@ -73,6 +81,11 @@ export function buildEffectivePolicy(
 
   return {
     rules,
+    scoreBands: scoreBandsForTemplate(template && {
+      reviewAtScore: template.reviewAtScore ?? null,
+      blockAtScore: template.blockAtScore ?? null,
+      escalateAtScore: template.escalateAtScore ?? null,
+    }),
     templateId: template?.id ?? null,
     activeRuleIds: [...rules.keys()],
   };
@@ -82,21 +95,26 @@ export async function loadEffectivePolicy(
   policyTemplateId: string | null,
   db: Prisma.TransactionClient = prisma,
 ): Promise<EffectivePolicy> {
-  const [catalog, policyRules] = await Promise.all([
+  const [catalog, template] = await Promise.all([
     db.riskRule.findMany({
       orderBy: { id: "asc" },
       select: { id: true, name: true, category: true, baseScore: true, defaultAction: true },
     }),
     policyTemplateId
-      ? db.policyRule.findMany({
-          where: { policyTemplateId },
-          select: { riskRuleId: true, enabled: true, actionOverride: true, thresholdOverride: true },
+      ? db.policyTemplate.findUnique({
+          where: { id: policyTemplateId },
+          select: {
+            id: true,
+            reviewAtScore: true,
+            blockAtScore: true,
+            escalateAtScore: true,
+            policyRules: {
+              select: { riskRuleId: true, enabled: true, actionOverride: true, thresholdOverride: true },
+            },
+          },
         })
       : null,
   ]);
 
-  return buildEffectivePolicy(
-    catalog,
-    policyTemplateId && policyRules ? { id: policyTemplateId, policyRules } : null,
-  );
+  return buildEffectivePolicy(catalog, template);
 }

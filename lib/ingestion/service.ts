@@ -236,7 +236,14 @@ function buildRiskExplanation(evaluation: RiskEvaluation) {
     .map((finding) => `${finding.ruleId} (${finding.location})`)
     .join(", ");
 
-  return `This event was generated because the model call matched ${ruleSummary}. The combined score, environment, data type, and tool context produced a ${evaluation.level} risk classification.`;
+  const bandSummary = [
+    evaluation.raisedBy
+      ? ` The policy template raises calls scoring ${evaluation.raisedBy.threshold} or more to ${evaluation.raisedBy.action}.`
+      : "",
+    evaluation.escalated ? " The score also reached the template's escalation band, so the event was created as escalated." : "",
+  ].join("");
+
+  return `This event was generated because the model call matched ${ruleSummary}. The combined score, environment, data type, and tool context produced a ${evaluation.level} risk classification.${bandSummary}`;
 }
 
 function ingestionMeta(context: IngestionContext, normalized: NormalizedIngestion, applicationId: string) {
@@ -419,7 +426,7 @@ export async function ingestModelCall(context: IngestionContext, raw: unknown): 
               score: evaluation.score,
               level: evaluation.level,
               action: evaluation.action,
-              reviewStatus: evaluation.reviewRequired ? "pending_review" : "resolved",
+              reviewStatus: evaluation.escalated ? "escalated" : evaluation.reviewRequired ? "pending_review" : "resolved",
               owner: evaluation.reviewRequired ? "Unassigned" : "AI RiskOps",
               sla: evaluation.level === "severe" ? "2 hours" : "8 hours",
               riskExplanation: buildRiskExplanation(evaluation),
@@ -489,7 +496,7 @@ export async function ingestModelCall(context: IngestionContext, raw: unknown): 
         ingestion: {
           ...ingestionMeta(context, normalized, application.id),
           duplicate: false,
-          policy: { templateId: policy.templateId, activeRuleIds: policy.activeRuleIds },
+          policy: { templateId: policy.templateId, activeRuleIds: policy.activeRuleIds, scoreBands: policy.scoreBands },
           dataProtection: dataProtectionMeta(protectedFields.findings),
         },
         callLog,
